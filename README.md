@@ -623,7 +623,7 @@ if selected_test.test_id == "nice_effect":
 **CPU 스케줄러 벤치마크 시스템: Basic Priority, MLFQS, CFS 비교 분석**
 
 - **환경:** Python 3.8+, Streamlit, GCP VM
-- **배포:** http://34.47.105.226
+- **배포:** http://34.47.105.226:8501
 - **범위:** 3가지 스케줄러, 13개 테스트, 5개 카테고리
 
 ---
