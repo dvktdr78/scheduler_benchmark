@@ -140,8 +140,6 @@ source venv/bin/activate
 streamlit run app.py
 ```
 
-웹 브라우저에서 `http://34.47.105.226:8501` 접속
-
 ### 빠른 실행 스크립트
 
 ```bash
