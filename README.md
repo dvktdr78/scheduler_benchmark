@@ -2017,7 +2017,7 @@ Actual:            2499:1 (42% of theory)
 - **FreeBSD 소스**: MLFQS 구현 참조 (sys/kern/sched_4bsd.c)
 - **StackOverflow**: 정수 나눗셈 정밀도 문제 해결 힌트
 - **Operating System: Three Easy Pieces**: 운영체제를 3가지 항목으로 분류하여 운영체제 이해 자체에 결정적인 도움을 선사, 이 책이 아니었으면 이 프로젝트는 절대 마무리 될 수 없었습니다
-그리고 무엇보다, **끝까지 포기하지 않은 나 자신**에게.
+- 그리고 무엇보다, **끝까지 포기하지 않은 나 자신**에게.
 
 ---
 
