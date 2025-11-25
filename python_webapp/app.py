@@ -47,6 +47,16 @@ st.markdown(
         padding-left: 1.5rem;
         padding-right: 1.5rem;
       }
+      .sticky-header {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: #0e1117;
+        padding-top: 4px;
+        padding-bottom: 10px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
     </style>
     <div style="font-size:22px; font-weight:700; text-align:center; margin-bottom:12px;">
       👉 <a class="cta-link" href="https://github.com/dvktdr78/scheduler_benchmark?tab=readme-ov-file#%EC%8A%A4%EC%BC%80%EC%A4%84%EB%9F%AC-%EB%B2%A4%EC%B9%98%EB%A7%88%ED%81%AC-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-%EC%86%8C%EA%B0%90%EB%AC%B8" target="_blank">스케줄러 벤치마크 프로젝트 소감문 보기</a> 👈
@@ -55,6 +65,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.markdown("<div class='sticky-header'>", unsafe_allow_html=True)
 header_col1, header_col2 = st.columns([4, 2])
 with header_col1:
     st.title("⚙️ 스케줄러 벤치마크")
@@ -64,6 +75,7 @@ with header_col2:
         "<div style='margin-top:6px; text-align:center; font-weight:600;'>👆 위의 \"벤치마크 실행\" 버튼을 눌러주세요!</div>",
         unsafe_allow_html=True,
     )
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("""
 3가지 CPU 스케줄러를 목표 기반 테스트로 비교 분석합니다.
