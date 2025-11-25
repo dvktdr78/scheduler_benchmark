@@ -306,9 +306,10 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 **메트릭**: Jain's Fairness Index (1.0에 가까울수록 공정)
 
 **공정성 정의(현재 구현)**:
-- 각 스레드가 runnable(READY/RUNNING)했던 시간 × nice→weight를 entitlement로 삼고,
-- 실제 CPU 사용 비중을 entitlement 비중으로 나눈 값에 Jain Index 적용.
-- runnable 시간이 0이거나 완료 스레드가 없으면 해당 항목은 `N/A`로 표시해 0.0과 혼동하지 않습니다.
+- 각 스레드가 **실제로 실행 가능한 시간(READY/RUNNING)** 동안 가져야 할 몫을 `nice→weight`로 계산합니다. 예: nice -20은 weight가 크니 더 큰 몫을 갖습니다.
+- 관찰 구간에서 받은 **CPU 비중 ÷ (runnable_time × weight 비중)**을 구해, 모든 스레드의 값이 1에 가까우면 공정합니다.
+- 이 비율들에 Jain Index를 적용해 0~1 사이 값으로 표현합니다(1.0 = 이상적 비례 배분).
+- runnable 시간이 0이거나 완료 스레드가 없으면 해당 값은 `N/A`로 표시해 0.0과 혼동하지 않습니다.
 
 ### 4. Nice 효과 (1개 테스트, MLFQS vs CFS)
 

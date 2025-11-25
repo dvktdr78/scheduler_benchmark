@@ -309,7 +309,7 @@ def generate_insights(
         if best_fairness[1] > 0.9:
             insights.append(
                 f"⚖️ 공정성: {best_fairness[0].upper()}가 가장 우수 "
-                f"(Jain Index: {best_fairness[1]:.3f})"
+                f"(Jain Index: {best_fairness[1]:.4f})"
             )
 
     # 3. Starvation 경고 (basic이 포함된 경우)

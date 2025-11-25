@@ -170,7 +170,7 @@ def fmt_table_value(key: str, value):
         return "N/A"
     if key == 'fairness':
         try:
-            return float(f"{value:.4f}")
+            return f"{value:.4f}"
         except Exception:
             return value
     return value
