@@ -47,15 +47,18 @@ st.markdown(
         padding-left: 1.5rem;
         padding-right: 1.5rem;
       }
-      .sticky-header {
+      /* 메인 헤더(타이틀 + 실행 버튼) 고정 */
+      div[data-testid="stHorizontalBlock"]:first-of-type {
         position: sticky;
         top: 0;
-        z-index: 100;
+        z-index: 200;
         background: #0e1117;
         padding-top: 4px;
         padding-bottom: 10px;
-        margin-bottom: 8px;
         border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      div[data-testid="stHorizontalBlock"]:first-of-type > div {
+        align-items: center;
       }
     </style>
     <div style="font-size:22px; font-weight:700; text-align:center; margin-bottom:12px;">
@@ -65,7 +68,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown("<div class='sticky-header'>", unsafe_allow_html=True)
 header_col1, header_col2 = st.columns([4, 2])
 with header_col1:
     st.title("⚙️ 스케줄러 벤치마크")
@@ -75,7 +77,32 @@ with header_col2:
         "<div style='margin-top:6px; text-align:center; font-weight:600;'>👆 위의 \"벤치마크 실행\" 버튼을 눌러주세요!</div>",
         unsafe_allow_html=True,
     )
-st.markdown("</div>", unsafe_allow_html=True)
+
+# 강제 sticky 적용 (Streamlit DOM 변화 대응)
+components.html(
+    """
+    <script>
+    (function() {
+      const setSticky = () => {
+        const doc = window.parent.document;
+        const header = doc.querySelector('div[data-testid="stHorizontalBlock"]');
+        if (!header) return;
+        header.style.position = 'sticky';
+        header.style.top = '0px';
+        header.style.zIndex = '200';
+        header.style.background = '#0e1117';
+        header.style.paddingTop = '4px';
+        header.style.paddingBottom = '10px';
+        header.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+      };
+      setSticky();
+      const mo = new MutationObserver(() => setSticky());
+      mo.observe(window.parent.document.body, { childList: true, subtree: true });
+    })();
+    </script>
+    """,
+    height=0,
+)
 
 st.markdown("""
 3가지 CPU 스케줄러를 목표 기반 테스트로 비교 분석합니다.
