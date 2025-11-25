@@ -9,6 +9,9 @@ from typing import List, Optional, Any
 import pandas as pd
 from scheduler.thread import Thread, ThreadStatus
 
+MIN_IO_DURATION = 8   # ticks (2 time slices)
+MAX_IO_DURATION = 120 # ticks
+
 
 class Simulator:
     """스케줄러 시뮬레이터"""
@@ -34,6 +37,8 @@ class Simulator:
         for thread in threads:
             # 초기에는 모두 READY로 설정하지 않고 arrival_time에 추가
             thread.status = ThreadStatus.BLOCKED  # 도착 전
+            thread.io_remaining = 0
+            thread.cpu_since_io = 0
 
     def run(self, max_ticks: int = 10000) -> pd.DataFrame:
         """
@@ -88,8 +93,13 @@ class Simulator:
                 self.scheduler.add_thread(thread)
 
     def _handle_io_completion(self):
-        """I/O 완료 처리 (구현 간소화 - I/O는 즉시 처리)"""
-        pass
+        """I/O 완료 처리 (BLOCKED → READY)"""
+        for thread in self.threads:
+            if thread.status == ThreadStatus.BLOCKED and thread.io_remaining > 0:
+                thread.io_remaining -= 1
+                if thread.io_remaining <= 0:
+                    thread.status = ThreadStatus.READY
+                    self.scheduler.add_thread(thread)
 
     def _handle_running_thread(self):
         """실행 중인 스레드 처리"""
@@ -112,6 +122,18 @@ class Simulator:
             self.prev_running_tid = self.running.tid
             self.running = None
             return
+
+        # I/O 진입 여부 확인 (완료가 아닐 때만)
+        if self.running.io_frequency > 0 and self.running.io_duration > 0:
+            self.running.cpu_since_io += 1
+            if self.running.cpu_since_io >= self.running.io_frequency:
+                self.running.cpu_since_io = 0
+                self.running.io_remaining = self._clamp_io_duration(self.running.io_duration)
+                if self.running.io_remaining > 0:
+                    self.running.status = ThreadStatus.BLOCKED
+                    self.prev_running_tid = self.running.tid
+                    self.running = None
+                    return
 
         # Time slice 만료 - 스레드를 다시 ready queue에 넣기
         if self.current_slice_remaining <= 0:
@@ -163,3 +185,9 @@ class Simulator:
     def _all_threads_done(self) -> bool:
         """모든 스레드 완료 확인"""
         return all(t.status == ThreadStatus.TERMINATED for t in self.threads)
+
+    def _clamp_io_duration(self, raw: int) -> int:
+        """의미 있는 블로킹이 되도록 I/O 시간을 클램프"""
+        if raw <= 0:
+            return 0
+        return max(MIN_IO_DURATION, min(MAX_IO_DURATION, raw))

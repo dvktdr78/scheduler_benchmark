@@ -84,9 +84,10 @@ class CFSScheduler:
         thread.weight = self.get_weight(thread.nice)
         thread.vruntime = max(thread.vruntime, self.min_vruntime)
 
-        self.all_threads.append(thread)
+        if thread not in self.all_threads:
+            self.all_threads.append(thread)
 
-        if thread.status == ThreadStatus.READY:
+        if thread.status == ThreadStatus.READY and thread not in self.ready_queue:
             self.ready_queue.add(thread)
 
     def tick(self, current_tick: int, running: Optional[Thread]):

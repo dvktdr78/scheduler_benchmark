@@ -35,6 +35,8 @@ class Thread:
     remaining_time: int = 0
     io_frequency: int = 0
     io_duration: int = 0
+    io_remaining: int = 0  # I/O 남은 시간
+    cpu_since_io: int = 0  # 마지막 I/O 이후 CPU 사용량
 
     # 통계
     start_time: int = -1

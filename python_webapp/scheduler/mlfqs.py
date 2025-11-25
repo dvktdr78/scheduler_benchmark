@@ -98,15 +98,19 @@ class MLFQSScheduler:
 
     def add_thread(self, thread: Thread):
         """스레드 추가"""
-        # nice 값은 workload에서 설정된 값 유지
-        thread.recent_cpu = 0
-        self.calculate_priority(thread)
+        is_new = thread not in self.all_threads
 
-        self.all_threads.append(thread)
+        if is_new:
+            thread.recent_cpu = 0
+            self.all_threads.append(thread)
+
+        # priority는 최신 상태로 유지
+        self.calculate_priority(thread)
 
         if thread.status == ThreadStatus.READY:
             # 해당 priority 큐에 추가 (O(1)!)
-            self.ready_queues[thread.priority].append(thread)
+            if thread not in self.ready_queues[thread.priority]:
+                self.ready_queues[thread.priority].append(thread)
 
     def tick(self, current_tick: int, running: Optional[Thread]):
         """매 틱마다 호출"""

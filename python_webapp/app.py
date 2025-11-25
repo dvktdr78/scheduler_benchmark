@@ -23,7 +23,7 @@ from benchmark.tests import TEST_CATEGORIES, get_test_by_id, ALL_TESTS
 
 # 페이지 설정
 st.set_page_config(
-    page_title="스케줄러 벤치마크 (Level 2)",
+    page_title="스케줄러 벤치마크",
     page_icon="⚙️",
     layout="wide"
 )

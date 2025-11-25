@@ -46,9 +46,10 @@ class BasicPriorityScheduler:
             thread.priority = PRI_DEFAULT - thread.nice
             thread.priority = max(PRI_MIN, min(PRI_MAX, thread.priority))
 
-        self.all_threads.append(thread)
+        if thread not in self.all_threads:
+            self.all_threads.append(thread)
 
-        if thread.status == ThreadStatus.READY:
+        if thread.status == ThreadStatus.READY and thread not in self.ready_queue:
             self.ready_queue.append(thread)
 
     def pick_next(self) -> Optional[Thread]:
