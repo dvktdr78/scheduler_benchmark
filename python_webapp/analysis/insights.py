@@ -10,6 +10,7 @@ from typing import List, Dict
 import numpy as np
 from scipy import stats
 from scheduler.thread import Thread
+from scheduler.cfs import CFSScheduler
 
 
 def calculate_jains_index(values: List[float]) -> float:
@@ -104,12 +105,42 @@ def calculate_scheduler_metrics(threads: List[Thread]) -> Dict:
     completed = [t for t in threads if t.finish_time >= 0]
     avg_turnaround = (
         sum(t.finish_time - t.arrival_time for t in completed) / len(completed)
-        if completed else 0
+        if completed else None
     )
 
-    # 공정성 지수
+    # 공정성 지수 (runnable 시간 대비 가중치 비율 기반)
     wait_times = [t.wait_time for t in threads]
-    fairness = calculate_jains_index(wait_times)
+    cpu_times = []
+    entitlements = []
+    for t in threads:
+        if t.burst_time <= 0:
+            continue
+        cpu_used = max(0, t.burst_time - t.remaining_time)
+        runnable_time = getattr(t, "runnable_time", 0)
+        if runnable_time <= 0:
+            continue
+        cpu_times.append(cpu_used)
+        # CFS weight 테이블을 공통 entitlement로 사용 (nice 기반 가중치)
+        weight = getattr(t, "weight", None)
+        if weight is None or weight <= 0:
+            weight = CFSScheduler.get_weight(t.nice)
+        entitlements.append(runnable_time * weight)
+
+    if cpu_times and entitlements:
+        total_cpu = sum(cpu_times)
+        total_weight = sum(entitlements)
+        if total_cpu > 0 and total_weight > 0:
+            # 실측 비중 / 기대 비중이 모두 동일하면 완전 공정(=1.0)
+            share_ratios = [
+                (cpu / total_cpu) / (weight / total_weight)
+                for cpu, weight in zip(cpu_times, entitlements)
+                if weight > 0
+            ]
+            fairness = calculate_jains_index(share_ratios) if share_ratios else 0.0
+        else:
+            fairness = 0.0
+    else:
+        fairness = 0.0
 
     # Starvation 감지
     # - 공정성 지수가 높으면 (≥0.85) starvation 없음
@@ -121,7 +152,7 @@ def calculate_scheduler_metrics(threads: List[Thread]) -> Dict:
 
     # CPU time ratio (nice 효과 측정)
     # Nice가 다른 그룹 간 CPU 시간 비율 계산
-    cpu_time_ratio = 0.0
+    cpu_time_ratio = None
     nice_values = set(t.nice for t in threads)
     if len(nice_values) >= 2:
         # Nice 값으로 그룹화
@@ -143,8 +174,11 @@ def calculate_scheduler_metrics(threads: List[Thread]) -> Dict:
 
         if low_priority_cpu > 0:
             cpu_time_ratio = high_priority_cpu / low_priority_cpu
+        elif high_priority_cpu > 0:
+            # 낮은 우선순위가 한 번도 실행되지 않은 경우: 과도한 비율 대신 사용된 CPU 시간으로 대체
+            cpu_time_ratio = float(high_priority_cpu)
         else:
-            cpu_time_ratio = float('inf') if high_priority_cpu > 0 else 1.0
+            cpu_time_ratio = 1.0
 
     # 컨텍스트 스위치 수 (스케일 테스트용)
     context_switches = threads[0].context_switches if hasattr(threads[0], "context_switches") else 0
@@ -205,6 +239,8 @@ def generate_comparison_report(
             continue
 
         current_value = sched_metrics.get(primary_metric, 0)
+        if current_value is None or baseline_value is None:
+            continue
 
         # 메트릭 종류에 따라 개선 방향 결정
         if primary_metric in ['avg_wait', 'avg_turnaround', 'context_switches']:

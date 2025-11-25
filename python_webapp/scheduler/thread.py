@@ -43,6 +43,7 @@ class Thread:
     finish_time: int = -1
     wait_time: int = 0
     last_scheduled: int = -1
+    runnable_time: int = 0  # READY or RUNNING 상태로 있었던 시간
     # 시뮬레이션 전체 컨텍스트 스위치 수 (메트릭 계산용)
     context_switches: int = 0
 

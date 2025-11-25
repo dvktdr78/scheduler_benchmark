@@ -289,7 +289,7 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 - 실제 애플리케이션 동작 모방
 - Nice 0으로 통일 (애플리케이션 스레드는 보통 동일 우선순위)
 
-### 3. 공정성 (2개 테스트, MLFQS vs CFS)
+### 3. 공정성 (3개 테스트, MLFQS vs CFS)
 
 **목적**: CPU 시간 배분의 공정성 측정
 
@@ -297,12 +297,18 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 |--------|---------|------------|-----------|
 | 공정성: CPU 시간 배분 | cpu_bound | fairness | MLFQS + CFS |
 | 공정성: 혼합 워크로드 | mixed | fairness | MLFQS + CFS |
+| 공정성: 극단 Nice 가중치 | extreme_nice_fairness | fairness | MLFQS + CFS |
 
 **왜 Basic을 제외하는가?**
 - Basic Priority는 정적 우선순위 기반으로 starvation 위험 존재
 - 공정성 측정에 부적합 (애초에 공정성을 목표로 하지 않음)
 
 **메트릭**: Jain's Fairness Index (1.0에 가까울수록 공정)
+
+**공정성 정의(현재 구현)**:
+- 각 스레드가 runnable(READY/RUNNING)했던 시간 × nice→weight를 entitlement로 삼고,
+- 실제 CPU 사용 비중을 entitlement 비중으로 나눈 값에 Jain Index 적용.
+- runnable 시간이 0이거나 완료 스레드가 없으면 해당 항목은 `N/A`로 표시해 0.0과 혼동하지 않습니다.
 
 ### 4. Nice 효과 (1개 테스트, MLFQS vs CFS)
 

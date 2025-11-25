@@ -342,6 +342,53 @@ def generate_extreme_nice(count: int, seed: Optional[int] = None) -> List[Thread
     return threads
 
 
+def generate_extreme_nice_fairness(count: int, seed: Optional[int] = None) -> List[Thread]:
+    """
+    Nice 값 극단 테스트 (공정성 측정용, 짧은 burst)
+
+    목적: 기본 extreme_nice보다 짧은 burst로, 제한된 시뮬레이션 시간 내 일부 스레드가 완료되도록 함.
+    """
+    if seed is not None:
+        random.seed(seed)
+
+    threads = []
+    half = count // 2
+
+    # 절반: Nice -20 (최고 우선순위)
+    for i in range(half):
+        burst = 1000
+        thread = Thread(
+            tid=i+1,
+            name=f"nice_minus20_fair_{i+1}",
+            arrival_time=random.randint(0, 50),
+            burst_time=burst,
+            remaining_time=burst,
+            io_frequency=0,
+            io_duration=0,
+            nice=-20,
+            status=ThreadStatus.READY
+        )
+        threads.append(thread)
+
+    # 절반: Nice 19 (최저 우선순위)
+    for i in range(count - half):
+        burst = 1000
+        thread = Thread(
+            tid=half + i + 1,
+            name=f"nice_19_fair_{i+1}",
+            arrival_time=random.randint(0, 50),
+            burst_time=burst,
+            remaining_time=burst,
+            io_frequency=0,
+            io_duration=0,
+            nice=19,
+            status=ThreadStatus.READY
+        )
+        threads.append(thread)
+
+    return threads
+
+
 # ========== 워크로드 팩토리 ==========
 
 WORKLOAD_GENERATORS = {
@@ -353,6 +400,7 @@ WORKLOAD_GENERATORS = {
     "batch": generate_batch_processing,
     "gaming": generate_gaming,
     "extreme_nice": generate_extreme_nice,
+    "extreme_nice_fairness": generate_extreme_nice_fairness,
 }
 
 

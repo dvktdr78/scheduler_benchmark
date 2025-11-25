@@ -193,6 +193,26 @@ TEST_FAIRNESS_MIXED = BenchmarkTest(
     """
 )
 
+TEST_FAIRNESS_EXTREME_NICE = BenchmarkTest(
+    test_id="fairness_extreme_nice",
+    name="공정성: 극단 Nice 가중치",
+    goal="Nice 가중치 비율에 맞는 CPU 배분",
+    workload_type="extreme_nice_fairness",
+    thread_count=30,
+    schedulers=["mlfqs", "cfs"],  # Basic 제외
+    primary_metric="fairness",
+    description="""
+    극단적 Nice 워크로드 (Nice -20 vs 19), I/O 없음:
+      - 절반: Nice -20 (최고 우선순위)
+      - 절반: Nice 19 (최저 우선순위)
+      - CPU burst: 2,000 ticks (공정성 측정용으로 단축)
+
+    목표: 가중치 비율에 따른 CPU 배분 공정성 측정
+    비교: MLFQS vs CFS (CFS는 weight 비례 분배가 목표)
+    메트릭: Jain's Fairness Index (1.0에 가까울수록 공정)
+    """
+)
+
 # 4. Nice 효과 테스트 (MLFQS vs CFS만)
 TEST_NICE_EFFECT = BenchmarkTest(
     test_id="nice_effect",
@@ -273,7 +293,7 @@ TEST_CATEGORIES: Dict[str, Dict[str, Any]] = {
     },
     "공정성": {
         "description": "CPU 시간 배분의 공정성 (MLFQS vs CFS)",
-        "tests": [TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED]
+        "tests": [TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE]
     },
     "Nice 효과": {
         "description": "Nice 값의 실제 효과 검증 (MLFQS vs CFS)",
@@ -291,7 +311,7 @@ TEST_CATEGORIES: Dict[str, Dict[str, Any]] = {
 ALL_TESTS = [
     TEST_GENERAL_MIXED, TEST_GENERAL_CPU, TEST_GENERAL_IO,
     TEST_APP_WEB, TEST_APP_DATABASE, TEST_APP_BATCH, TEST_APP_GAMING,
-    TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED,
+    TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE,
     TEST_NICE_EFFECT,
     TEST_SCALABILITY_10, TEST_SCALABILITY_100, TEST_SCALABILITY_500
 ]

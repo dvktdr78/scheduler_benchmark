@@ -153,6 +153,28 @@ max_ticks = st.sidebar.number_input(
 
 # ========== 실행 버튼 ==========
 
+
+def fmt_metric(value, fmt=":.1f"):
+    """None/숫자 모두 안전하게 포매팅"""
+    if value is None:
+        return "N/A"
+    try:
+        return format(value, fmt)
+    except Exception:
+        return str(value)
+
+
+def fmt_table_value(key: str, value):
+    """테이블 전용 포매터 (공정성 4자리 반올림)"""
+    if value is None:
+        return "N/A"
+    if key == 'fairness':
+        try:
+            return float(f"{value:.4f}")
+        except Exception:
+            return value
+    return value
+
 if run_clicked:
 
     # 실행 시 로딩 영역으로 스크롤 이동
@@ -179,12 +201,24 @@ if run_clicked:
         base_threads = generate_workload(selected_test.workload_type, selected_test.thread_count, seed=42)
         progress_bar.progress(5)
 
-    # Nice 효과 테스트는 일부만 완료하도록 시뮬레이션 시간 조정
+    # Nice/공정성 극단 테스트는 일부만 완료하도록 시뮬레이션 시간 조정
     actual_max_ticks = max_ticks
     if selected_test.test_id == "nice_effect":
         total_work = sum(t.burst_time for t in base_threads)
-        actual_max_ticks = int(total_work * 0.5)  # 50% 시간만 실행
-        st.info(f"💡 Nice 효과 측정: 시뮬레이션을 {actual_max_ticks:,} ticks에서 중단하여 일부만 완료")
+        suggested_ticks = int(total_work * 0.2)  # 20%만 실행해도 효과 관찰 가능
+        actual_max_ticks = min(max_ticks, suggested_ticks)  # 과도한 런타임 방지
+        st.info(
+            f"💡 Nice 효과 측정: 시뮬레이션을 최대 {actual_max_ticks:,} ticks까지 실행 "
+            f"(입력값 {max_ticks:,} / 총 작업의 20% 기준)"
+        )
+    elif selected_test.test_id == "fairness_extreme_nice":
+        total_work = sum(t.burst_time for t in base_threads)
+        suggested_ticks = int(total_work * 0.3)  # 모든 스레드 완료 전에 비율 측정
+        actual_max_ticks = min(max_ticks, suggested_ticks)
+        st.info(
+            f"💡 공정성 극단 Nice: 최대 {actual_max_ticks:,} ticks까지 실행 "
+            f"(입력값 {max_ticks:,} / 총 작업의 30% 기준)"
+        )
 
     # 스케줄러 실행
     scheduler_results = {}
@@ -280,31 +314,31 @@ if 'report' in st.session_state:
 
             # 주요 메트릭 강조 표시
             if test.primary_metric == 'avg_wait':
-                st.metric("⭐ 평균 대기 시간", f"{metrics['avg_wait']:.1f} ticks")
-                st.metric("평균 반환 시간", f"{metrics['avg_turnaround']:.1f} ticks")
-                st.metric("공정성 지수", f"{metrics['fairness']:.3f}")
+                st.metric("⭐ 평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
+                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
+                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
             elif test.primary_metric == 'avg_turnaround':
-                st.metric("평균 대기 시간", f"{metrics['avg_wait']:.1f} ticks")
-                st.metric("⭐ 평균 반환 시간", f"{metrics['avg_turnaround']:.1f} ticks")
-                st.metric("공정성 지수", f"{metrics['fairness']:.3f}")
+                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
+                st.metric("⭐ 평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
+                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
             elif test.primary_metric == 'fairness':
-                st.metric("평균 대기 시간", f"{metrics['avg_wait']:.1f} ticks")
-                st.metric("평균 반환 시간", f"{metrics['avg_turnaround']:.1f} ticks")
-                st.metric("⭐ 공정성 지수", f"{metrics['fairness']:.3f}")
+                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
+                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
+                st.metric("⭐ 공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
             elif test.primary_metric == 'cpu_time_ratio':
-                st.metric("평균 대기 시간", f"{metrics['avg_wait']:.1f} ticks")
-                st.metric("평균 반환 시간", f"{metrics['avg_turnaround']:.1f} ticks")
-                st.metric("⭐ CPU 시간 비율", f"{metrics['cpu_time_ratio']:.1f}x")
-                st.metric("공정성 지수", f"{metrics['fairness']:.3f}")
+                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
+                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
+                st.metric("⭐ CPU 시간 비율", f"{fmt_metric(metrics['cpu_time_ratio'], ':.1f')}x")
+                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
             elif test.primary_metric == 'context_switches':
                 st.metric("⭐ 컨텍스트 스위치", f"{metrics['context_switches']}")
-                st.metric("평균 대기 시간", f"{metrics['avg_wait']:.1f} ticks")
-                st.metric("평균 반환 시간", f"{metrics['avg_turnaround']:.1f} ticks")
-                st.metric("공정성 지수", f"{metrics['fairness']:.3f}")
+                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
+                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
+                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
             else:
-                st.metric("평균 대기 시간", f"{metrics['avg_wait']:.1f} ticks")
-                st.metric("평균 반환 시간", f"{metrics['avg_turnaround']:.1f} ticks")
-                st.metric("공정성 지수", f"{metrics['fairness']:.3f}")
+                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
+                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
+                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
 
             if metrics.get('has_starvation'):
                 st.warning("⚠️ Starvation 위험")
@@ -343,7 +377,7 @@ if 'report' in st.session_state:
     for scheduler_name in scheduler_names:
         metrics = report['metrics'][scheduler_name]
         metrics_data[scheduler_name.upper()] = [
-            metrics[key] for _, key in metrics_rows
+            fmt_table_value(key, metrics[key]) for _, key in metrics_rows
         ]
 
     comparison_df = pd.DataFrame(metrics_data)

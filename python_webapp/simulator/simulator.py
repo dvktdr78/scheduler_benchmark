@@ -158,8 +158,10 @@ class Simulator:
             self.prev_running_tid = next_thread.tid
 
     def _update_wait_times(self):
-        """대기 중인 스레드의 wait_time 증가"""
+        """대기/실행 가능했던 시간 누적 (wait_time, runnable_time)"""
         for thread in self.threads:
+            if thread.status in (ThreadStatus.READY, ThreadStatus.RUNNING):
+                thread.runnable_time += 1
             if thread.status == ThreadStatus.READY:
                 thread.wait_time += 1
 
