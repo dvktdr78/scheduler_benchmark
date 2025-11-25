@@ -141,6 +141,7 @@ def calculate_scheduler_metrics(threads: List[Thread]) -> Dict:
             fairness = 0.0
     else:
         fairness = 0.0
+    fairness = round(fairness, 4)
 
     # Starvation 감지
     # - 공정성 지수가 높으면 (≥0.85) starvation 없음
