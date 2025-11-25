@@ -7,6 +7,7 @@
   - 공정한 비교만 수행
 """
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -27,7 +28,43 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("⚙️ 스케줄러 벤치마크")
+st.markdown(
+    """
+    <style>
+      .cta-link {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        color: inherit;
+        transition: color 0.2s ease;
+      }
+      .cta-link:hover { color: #ff7f50; }
+      /* 사이드바 폭 2배로 확장 */
+      div[data-testid="stSidebar"] {
+        min-width: 42rem;
+        max-width: 42rem;
+      }
+      section[data-testid="stSidebar"] .block-container {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+      }
+    </style>
+    <div style="font-size:22px; font-weight:700; text-align:center; margin-bottom:12px;">
+      👉 <a class="cta-link" href="https://github.com/dvktdr78/scheduler_benchmark?tab=readme-ov-file#%EC%8A%A4%EC%BC%80%EC%A4%84%EB%9F%AC-%EB%B2%A4%EC%B9%98%EB%A7%88%ED%81%AC-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-%EC%86%8C%EA%B0%90%EB%AC%B8" target="_blank">스케줄러 벤치마크 프로젝트 소감문 보기</a> 👈
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+header_col1, header_col2 = st.columns([4, 2])
+with header_col1:
+    st.title("⚙️ 스케줄러 벤치마크")
+with header_col2:
+    run_clicked = st.button("🚀 벤치마크 실행", type="primary", use_container_width=True)
+    st.markdown(
+        "<div style='margin-top:6px; text-align:center; font-weight:600;'>👆 위의 \"벤치마크 실행\" 버튼을 눌러주세요!</div>",
+        unsafe_allow_html=True,
+    )
+
 st.markdown("""
 3가지 CPU 스케줄러를 목표 기반 테스트로 비교 분석합니다.
 
@@ -116,7 +153,21 @@ max_ticks = st.sidebar.number_input(
 
 # ========== 실행 버튼 ==========
 
-if st.button("🚀 벤치마크 실행", type="primary", use_container_width=True):
+if run_clicked:
+
+    # 실행 시 로딩 영역으로 스크롤 이동
+    st.markdown("<div id='result-anchor'></div>", unsafe_allow_html=True)
+    components.html(
+        """
+        <script>
+        const el = window.parent.document.getElementById('result-anchor');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        </script>
+        """,
+        height=0,
+    )
 
     with st.spinner("🔄 초기화 중..."):
         progress_bar = st.progress(0)
@@ -181,6 +232,18 @@ if st.button("🚀 벤치마크 실행", type="primary", use_container_width=Tru
 
     progress_bar.empty()
     status_text.success("✅ 분석 완료!")
+    st.markdown("<div id='analysis-anchor'></div>", unsafe_allow_html=True)
+    components.html(
+        """
+        <script>
+        const el = window.parent.document.getElementById('analysis-anchor');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        </script>
+        """,
+        height=0,
+    )
 
 
 # 결과 표시
