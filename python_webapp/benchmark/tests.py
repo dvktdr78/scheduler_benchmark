@@ -54,12 +54,12 @@ TEST_GENERAL_CPU = BenchmarkTest(
     schedulers=["basic", "mlfqs", "cfs"],
     primary_metric="avg_turnaround",
     description="""
-    CPU-bound 워크로드 (Nice 0):
+    CPU-bound 워크로드 (Nice -10~10):
       - CPU burst: 300-800 ticks
       - I/O 없음
 
     목표: 과학 계산, 컴파일 등 CPU 집약 작업
-    비교: 순수 알고리즘 효율성 비교 (Nice 0으로 통일)
+    비교: 우선순위 처리 능력 비교 (Nice 다양)
     """
 )
 
@@ -72,13 +72,12 @@ TEST_GENERAL_IO = BenchmarkTest(
     schedulers=["basic", "mlfqs", "cfs"],
     primary_metric="avg_wait",
     description="""
-    I/O-bound 워크로드 (Nice 0):
-      - CPU burst: 50-200 ticks (짧음)
-      - I/O 빈도: 50-200 ticks (잦음)
-      - I/O 지속: 50-150 ticks
+    I/O-bound 워크로드 (60% I/O + 40% CPU 경쟁자):
+      - I/O 스레드: burst 30-100, I/O 10-30 tick마다
+      - CPU 경쟁자: burst 500-1000, I/O 없음
 
-    목표: 사용자 인터페이스, 에디터 등 interactive 작업
-    비교: Interactive 최적화 능력 (MLFQS/CFS의 장점 예상)
+    목표: I/O-bound vs CPU-bound 경쟁 상황
+    비교: I/O 우대 능력 (MLFQS의 장점 예상)
     """
 )
 
@@ -92,9 +91,9 @@ TEST_APP_WEB = BenchmarkTest(
     schedulers=["basic", "mlfqs", "cfs"],
     primary_metric="avg_turnaround",
     description="""
-    웹 서버 패턴 (Nice 0):
-      - 90% 짧은 요청: 10-50 ticks
-      - 10% 긴 요청: 200-600 ticks
+    웹 서버 패턴 (Nice -5 vs 5):
+      - 90% 짧은 요청: 10-50 ticks (Nice -5)
+      - 10% 긴 요청: 200-600 ticks (Nice 5)
 
     목표: Nginx, Apache 등 웹 서버 시뮬레이션
     비교: 짧은 요청 우선 처리 능력
@@ -146,12 +145,12 @@ TEST_APP_GAMING = BenchmarkTest(
     schedulers=["basic", "mlfqs", "cfs"],
     primary_metric="avg_wait",
     description="""
-    게임 패턴 (Nice 0):
-      - 30% 렌더링: 50-150 ticks, 16ms 간격 도착
-      - 70% AI/물리: 200-500 ticks
+    게임 패턴 (Nice -10 vs 10):
+      - 30% 렌더링: 50-150 ticks, 16ms 간격 (Nice -10)
+      - 70% AI/물리: 200-500 ticks (Nice 10)
 
-    목표: 60 FPS 유지, 실시간 반응성
-    비교: 짧은 작업 우선 처리 능력
+    목표: 60 FPS 유지, 렌더링 우선
+    비교: 우선순위 기반 실시간 응답성
     """
 )
 

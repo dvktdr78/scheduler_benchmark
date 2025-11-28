@@ -271,8 +271,9 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 | I/O 집약적 워크로드 | io_bound | avg_wait | Basic + MLFQS + CFS |
 
 **특징**:
-- Nice 값은 0 또는 약한 차이 (-5~5)로 설정
-- 순수 스케줄링 알고리즘 효율성 비교
+- **mixed**: Nice -5~5 (약한 차이)
+- **cpu_bound**: Nice -10~10 (우선순위 처리 능력 테스트)
+- **io_bound**: 60% I/O + 40% CPU 경쟁자 혼합 (MLFQS I/O 우대 테스트)
 
 ### 2. 실제 응용 (4개 테스트, 3-way 비교)
 
@@ -280,14 +281,15 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 
 | 테스트 | 워크로드 | 패턴 | 비교 대상 |
 |--------|---------|------|-----------|
-| 웹 서버 패턴 | web_server | 90% 짧은 요청 + 10% 긴 요청 | Basic + MLFQS + CFS |
+| 웹 서버 패턴 | web_server | 90% 짧은 요청 (Nice -5) + 10% 긴 요청 (Nice 5) | Basic + MLFQS + CFS |
 | 데이터베이스 패턴 | database | 70% SELECT + 30% 트랜잭션 | Basic + MLFQS + CFS |
 | 배치 처리 패턴 | batch | CPU-heavy, 순차 도착 | Basic + MLFQS + CFS |
-| 게임/실시간 패턴 | gaming | 30% 렌더링 + 70% AI | Basic + MLFQS + CFS |
+| 게임/실시간 패턴 | gaming | 30% 렌더링 (Nice -10) + 70% AI (Nice 10) | Basic + MLFQS + CFS |
 
 **특징**:
 - 실제 애플리케이션 동작 모방
-- Nice 0으로 통일 (애플리케이션 스레드는 보통 동일 우선순위)
+- **web_server/gaming**: Nice 차이로 우선순위 처리 능력 테스트
+- **database/batch**: Nice 0으로 통일
 
 ### 3. 공정성 (3개 테스트, MLFQS vs CFS)
 
@@ -375,22 +377,21 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 #### 2. CPU-bound (CPU 집약)
 - CPU burst: 300-800 ticks
 - I/O: 없음
-- Nice: 0
-- 용도: 과학 계산, 컴파일
+- Nice: -10~10 (다양)
+- 용도: 과학 계산, 컴파일 (우선순위 처리 능력 테스트)
 
 #### 3. I/O-bound (I/O 집약)
-- CPU burst: 50-200 ticks (짧음)
-- I/O: 잦음 (빈도 50-200, 지속 50-150)
+- 60% I/O-bound: CPU burst 30-100, I/O 빈도 10-30 (매우 잦음)
+- 40% CPU-bound 경쟁자: CPU burst 500-1000, I/O 없음
 - Nice: 0
-- 용도: Interactive 애플리케이션, 에디터
+- 용도: MLFQS의 I/O 우대 능력 테스트
 
 ### 실제 응용 워크로드 (4개)
 
 #### 4. Web Server (웹 서버)
-- 90% 짧은 요청: 10-50 ticks
-- 10% 긴 요청: 200-600 ticks
-- Nice: 0
-- 모방: Nginx, Apache
+- 90% 짧은 요청: 10-50 ticks (Nice -5)
+- 10% 긴 요청: 200-600 ticks (Nice 5)
+- 모방: Nginx, Apache (짧은 요청 우선 처리)
 
 #### 5. Database (데이터베이스)
 - 70% SELECT 쿼리: 30-150 ticks
@@ -405,10 +406,9 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 - 모방: 대용량 데이터 처리, 빌드 시스템
 
 #### 7. Gaming (게임/실시간)
-- 30% 렌더링: 50-150 ticks, 16ms 간격 도착
-- 70% AI/물리: 200-500 ticks
-- Nice: 0
-- 목표: 60 FPS 유지
+- 30% 렌더링: 50-150 ticks, 16ms 간격 도착 (Nice -10)
+- 70% AI/물리: 200-500 ticks (Nice 10)
+- 목표: 60 FPS 유지 (렌더링 우선)
 
 ### 극단 테스트 워크로드 (2개)
 

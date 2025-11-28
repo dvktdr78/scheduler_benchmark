@@ -61,10 +61,11 @@ def generate_cpu_bound(count: int, seed: Optional[int] = None) -> List[Thread]:
     """
     CPU-bound 워크로드
 
-    특성: 긴 CPU burst, I/O 없음, Nice 0 (순수 알고리즘 비교)
-    용도: 과학 계산, 컴파일
+    특성: 긴 CPU burst, I/O 없음, Nice -10~10 다양
+    용도: 과학 계산, 컴파일 (우선순위 다양)
 
-    NOTE: Nice 0으로 통일 - 순수 스케줄링 알고리즘만 비교
+    NOTE: Nice 값 다양하게 설정하여 우선순위 처리 능력 테스트
+          Basic은 고정 우선순위, MLFQS/CFS는 동적 조정
     """
     if seed is not None:
         random.seed(seed)
@@ -79,7 +80,7 @@ def generate_cpu_bound(count: int, seed: Optional[int] = None) -> List[Thread]:
             burst_time=burst,
             remaining_time=burst,
             io_frequency=0,
-            nice=0,  # Nice 0 - 순수 알고리즘 비교
+            nice=random.randint(-10, 10),  # Nice 다양하게
             status=ThreadStatus.READY
         )
         threads.append(thread)
@@ -88,31 +89,54 @@ def generate_cpu_bound(count: int, seed: Optional[int] = None) -> List[Thread]:
 
 def generate_io_bound(count: int, seed: Optional[int] = None) -> List[Thread]:
     """
-    I/O-bound 워크로드
+    I/O-bound 워크로드 (CPU-bound 경쟁자 포함)
 
-    특성: 짧은 CPU burst, 잦은 I/O, Nice 0 (순수 알고리즘 비교)
-    용도: Interactive 애플리케이션
+    특성: 60% I/O-bound + 40% CPU-bound 혼합
+    용도: MLFQS의 I/O 우대 능력 테스트
 
-    NOTE: Nice 0으로 통일 - MLFQS/CFS의 interactive 최적화 능력 테스트
+    NOTE: CPU-bound 경쟁자가 있어야 MLFQS의 I/O 우대가 드러남
+          I/O 스레드는 매우 잦은 I/O (10-30 ticks 간격)
+          CPU 스레드는 긴 burst (500-1000 ticks)로 자원 경쟁 극대화
     """
     if seed is not None:
         random.seed(seed)
 
     threads = []
-    for i in range(count):
-        burst = random.randint(50, 200)  # 줄임: 1000-3000 → 50-200
+    io_count = int(count * 0.6)  # 60% I/O-bound
+    cpu_count = count - io_count  # 40% CPU-bound (경쟁 강화)
+
+    # I/O-bound 스레드 (짧은 burst, 매우 잦은 I/O)
+    for i in range(io_count):
+        burst = random.randint(30, 100)  # 더 짧은 burst
         thread = Thread(
             tid=i+1,
             name=f"io_{i+1}",
             arrival_time=random.randint(0, 100),
             burst_time=burst,
             remaining_time=burst,
-            io_frequency=random.randint(50, 200),
+            io_frequency=random.randint(10, 30),  # 매우 잦은 I/O (10-30 tick마다)
             io_duration=random.randint(50, 150),
-            nice=0,  # Nice 0 - 순수 알고리즘 비교
+            nice=0,
             status=ThreadStatus.READY
         )
         threads.append(thread)
+
+    # CPU-bound 경쟁자 (긴 burst, I/O 없음)
+    for i in range(cpu_count):
+        burst = random.randint(500, 1000)  # 더 긴 burst
+        thread = Thread(
+            tid=io_count + i + 1,
+            name=f"cpu_competitor_{i+1}",
+            arrival_time=random.randint(0, 50),
+            burst_time=burst,
+            remaining_time=burst,
+            io_frequency=0,  # I/O 없음
+            io_duration=0,
+            nice=0,
+            status=ThreadStatus.READY
+        )
+        threads.append(thread)
+
     return threads
 
 
@@ -122,15 +146,17 @@ def generate_web_server(count: int, seed: Optional[int] = None) -> List[Thread]:
     """
     웹 서버 패턴
 
-    특성: 90% 짧은 요청, 10% 긴 요청
-    실제: Nginx, Apache 패턴 모방
+    특성: 90% 짧은 요청 (Nice -5), 10% 긴 요청 (Nice 5)
+    실제: Nginx, Apache 패턴 모방 - 짧은 요청 우선 처리
+
+    NOTE: Nice 차이로 짧은 요청 우선 처리 능력 테스트
     """
     if seed is not None:
         random.seed(seed)
 
     threads = []
 
-    # 90% short requests (10-50 ticks)
+    # 90% short requests (10-50 ticks) - Nice -5 (higher priority)
     short_count = int(count * 0.9)
     for i in range(short_count):
         burst = random.randint(10, 50)
@@ -142,12 +168,12 @@ def generate_web_server(count: int, seed: Optional[int] = None) -> List[Thread]:
             remaining_time=burst,
             io_frequency=random.randint(20, 50),  # DB/파일 읽기
             io_duration=random.randint(10, 30),
-            nice=0,  # 웹 서버는 보통 동일 우선순위
+            nice=-5,  # 짧은 요청 우선
             status=ThreadStatus.READY
         )
         threads.append(thread)
 
-    # 10% long requests (200-600 ticks)
+    # 10% long requests (200-600 ticks) - Nice 5 (lower priority)
     long_count = count - short_count
     for i in range(long_count):
         burst = random.randint(200, 600)
@@ -159,7 +185,7 @@ def generate_web_server(count: int, seed: Optional[int] = None) -> List[Thread]:
             remaining_time=burst,
             io_frequency=random.randint(100, 300),
             io_duration=random.randint(50, 100),
-            nice=0,
+            nice=5,  # 긴 요청 낮은 우선순위
             status=ThreadStatus.READY
         )
         threads.append(thread)
@@ -248,15 +274,17 @@ def generate_gaming(count: int, seed: Optional[int] = None) -> List[Thread]:
     """
     게임/실시간 시스템 패턴
 
-    특성: 일부 고우선순위 (렌더링), 일부 저우선순위 (AI)
-    실제: 60 FPS 유지 필요
+    특성: 고우선순위 (렌더링 Nice=-10) vs 저우선순위 (AI Nice=10)
+    실제: 60 FPS 유지 필요 - 렌더링이 AI보다 우선
+
+    NOTE: Nice 차이가 있어야 MLFQS/CFS가 렌더링을 우선 처리
     """
     if seed is not None:
         random.seed(seed)
 
     threads = []
 
-    # 30% 고우선순위 (렌더링, 입력)
+    # 30% 고우선순위 (렌더링, 입력) - Nice -10
     high_count = int(count * 0.3)
     for i in range(high_count):
         burst = random.randint(50, 150)
@@ -268,12 +296,12 @@ def generate_gaming(count: int, seed: Optional[int] = None) -> List[Thread]:
             remaining_time=burst,
             io_frequency=random.randint(5, 20),  # GPU I/O
             io_duration=random.randint(10, 30),
-            nice=0,  # Nice 0으로 통일
+            nice=-10,  # 고우선순위 렌더링
             status=ThreadStatus.READY
         )
         threads.append(thread)
 
-    # 70% 저우선순위 (AI, 물리 연산)
+    # 70% 저우선순위 (AI, 물리 연산) - Nice 10
     low_count = count - high_count
     for i in range(low_count):
         burst = random.randint(200, 500)
@@ -285,7 +313,7 @@ def generate_gaming(count: int, seed: Optional[int] = None) -> List[Thread]:
             remaining_time=burst,
             io_frequency=0,
             io_duration=0,
-            nice=0,  # Nice 0으로 통일
+            nice=10,  # 저우선순위 AI
             status=ThreadStatus.READY
         )
         threads.append(thread)
