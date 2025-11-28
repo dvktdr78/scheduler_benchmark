@@ -5,6 +5,20 @@
   - 반복 측정 (10회) → 평균/표준편차
   - 통계적 유의성 검증 (t-test)
   - 메트릭 정의 명확화
+
+메트릭 분류:
+  [처리량 메트릭] - 낮을수록 좋음, MLFQS/Basic 유리
+    - avg_wait: 평균 대기 시간
+    - avg_turnaround: 평균 반환 시간
+
+  [일관성 메트릭] - 낮을수록 좋음, CFS 유리
+    - cv_wait: 대기 시간 변동계수 (표준편차/평균*100)
+    - p99_wait: 99 퍼센타일 대기 시간 (테일 레이턴시)
+    - worst_ratio: 최악/평균 대기 시간 비율
+
+  [공정성 메트릭] - CFS 유리
+    - fairness: Jain's Fairness Index (높을수록 좋음)
+    - starvation_pct: 실행 안된 스레드 비율 (낮을수록 좋음)
 """
 from typing import List, Dict
 import numpy as np
@@ -94,12 +108,36 @@ def test_statistical_significance(values_a: List[float], values_b: List[float]) 
 
 
 def calculate_scheduler_metrics(threads: List[Thread]) -> Dict:
-    """스케줄러 메트릭 계산"""
+    """
+    스케줄러 메트릭 계산
+
+    Returns:
+        [처리량 메트릭]
+        avg_wait: 평균 대기 시간 (낮을수록 좋음)
+        avg_turnaround: 평균 반환 시간 (낮을수록 좋음)
+
+        [일관성 메트릭] - CFS 장점이 드러남
+        cv_wait: 대기 시간 변동계수 % (낮을수록 일관적, 예측 가능)
+        p99_wait: 99 퍼센타일 대기 시간 (테일 레이턴시, 낮을수록 좋음)
+        worst_ratio: 최악/평균 비율 (낮을수록 좋음, 1.0이 이상적)
+
+        [공정성 메트릭] - CFS 장점이 드러남
+        fairness: Jain's Fairness Index (높을수록 좋음, 1.0이 이상적)
+        starvation_pct: 실행 안된 스레드 비율 % (0%가 이상적)
+
+        [기타]
+        cpu_time_ratio: Nice 그룹간 CPU 시간 비율
+        context_switches: 컨텍스트 스위치 횟수
+        has_starvation: Starvation 위험 여부
+    """
     if not threads:
         return {}
 
+    # ========== 처리량 메트릭 ==========
+    wait_times = [t.wait_time for t in threads]
+
     # 평균 대기 시간
-    avg_wait = sum(t.wait_time for t in threads) / len(threads)
+    avg_wait = sum(wait_times) / len(wait_times)
 
     # 완료된 스레드들의 반환 시간
     completed = [t for t in threads if t.finish_time >= 0]
@@ -107,6 +145,24 @@ def calculate_scheduler_metrics(threads: List[Thread]) -> Dict:
         sum(t.finish_time - t.arrival_time for t in completed) / len(completed)
         if completed else None
     )
+
+    # ========== 일관성 메트릭 (CFS 장점) ==========
+    # 변동계수 (Coefficient of Variation) - 낮을수록 일관적
+    std_wait = np.std(wait_times) if len(wait_times) > 1 else 0
+    cv_wait = (std_wait / avg_wait * 100) if avg_wait > 0 else 0
+
+    # 99 퍼센타일 대기 시간 (테일 레이턴시)
+    p99_wait = np.percentile(wait_times, 99) if wait_times else 0
+
+    # 최악/평균 비율 - 낮을수록 좋음
+    max_wait = max(wait_times) if wait_times else 0
+    worst_ratio = (max_wait / avg_wait) if avg_wait > 0 else 0
+
+    # ========== 공정성 메트릭 (CFS 장점) ==========
+    # Starvation 비율 - 실행 안된 스레드 %
+    cpu_times_all = [t.burst_time - t.remaining_time for t in threads]
+    starved_count = sum(1 for cpu in cpu_times_all if cpu <= 0)
+    starvation_pct = (starved_count / len(threads) * 100) if threads else 0
 
     # 공정성 지수 (runnable 시간 대비 가중치 비율 기반)
     wait_times = [t.wait_time for t in threads]
@@ -185,9 +241,20 @@ def calculate_scheduler_metrics(threads: List[Thread]) -> Dict:
     context_switches = threads[0].context_switches if hasattr(threads[0], "context_switches") else 0
 
     return {
-        'avg_wait': avg_wait,
-        'avg_turnaround': avg_turnaround,
-        'fairness': fairness,
+        # 처리량 메트릭 (낮을수록 좋음) - MLFQS/Basic 유리
+        'avg_wait': round(avg_wait, 2),
+        'avg_turnaround': round(avg_turnaround, 2) if avg_turnaround else None,
+
+        # 일관성 메트릭 (낮을수록 좋음) - CFS 유리
+        'cv_wait': round(cv_wait, 2),           # 변동계수 %
+        'p99_wait': round(p99_wait, 2),         # 99 퍼센타일
+        'worst_ratio': round(worst_ratio, 2),   # 최악/평균 비율
+
+        # 공정성 메트릭 - CFS 유리
+        'fairness': fairness,                    # Jain Index (높을수록 좋음)
+        'starvation_pct': round(starvation_pct, 1),  # 기아율 % (낮을수록 좋음)
+
+        # 기타
         'has_starvation': has_starvation,
         'cpu_time_ratio': cpu_time_ratio,
         'context_switches': context_switches
@@ -244,13 +311,19 @@ def generate_comparison_report(
             continue
 
         # 메트릭 종류에 따라 개선 방향 결정
-        if primary_metric in ['avg_wait', 'avg_turnaround', 'context_switches']:
+        # 낮을수록 좋은 메트릭
+        lower_is_better = ['avg_wait', 'avg_turnaround', 'context_switches',
+                          'cv_wait', 'p99_wait', 'worst_ratio', 'starvation_pct']
+        # 높을수록 좋은 메트릭
+        higher_is_better = ['fairness', 'cpu_time_ratio']
+
+        if primary_metric in lower_is_better:
             # 낮을수록 좋음
             if baseline_value > 1.0:
                 improvement = ((baseline_value - current_value) / baseline_value * 100)
             else:
                 improvement = baseline_value - current_value
-        elif primary_metric in ['fairness', 'cpu_time_ratio']:
+        elif primary_metric in higher_is_better:
             # 높을수록 좋음
             if baseline_value > 0.01:
                 improvement = ((current_value - baseline_value) / baseline_value * 100)
@@ -262,10 +335,16 @@ def generate_comparison_report(
         improvements[f"{name}_vs_{baseline_name}"] = improvement
 
     # 승자 결정 (primary_metric 기준)
-    if primary_metric in ['avg_wait', 'avg_turnaround', 'context_switches']:
+    # 낮을수록 좋은 메트릭
+    lower_is_better = ['avg_wait', 'avg_turnaround', 'context_switches',
+                      'cv_wait', 'p99_wait', 'worst_ratio', 'starvation_pct']
+    # 높을수록 좋은 메트릭
+    higher_is_better = ['fairness', 'cpu_time_ratio']
+
+    if primary_metric in lower_is_better:
         # 낮을수록 좋음
         winner = min(metrics.items(), key=lambda x: x[1].get(primary_metric, float('inf')))[0]
-    elif primary_metric in ['fairness', 'cpu_time_ratio']:
+    elif primary_metric in higher_is_better:
         # 높을수록 좋음
         winner = max(metrics.items(), key=lambda x: x[1].get(primary_metric, 0))[0]
     else:
@@ -323,30 +402,86 @@ def generate_insights(
                     f"{', '.join(s.upper() for s in other_schedulers)}는 안전합니다."
                 )
 
-    # 4. 메트릭별 권장사항
-    if primary_metric == 'avg_wait':
-        insights.append(
-            "📈 대기 시간 최소화:\n"
+    # 4. 일관성 메트릭 비교 (CFS 장점)
+    if any('cv_wait' in m for m in metrics.values()):
+        cv_scores = {name: m.get('cv_wait', float('inf')) for name, m in metrics.items()}
+        best_cv = min(cv_scores.items(), key=lambda x: x[1])
+        worst_cv = max(cv_scores.items(), key=lambda x: x[1])
+        if worst_cv[1] > best_cv[1] * 1.3:  # 30% 이상 차이나면
+            insights.append(
+                f"📊 일관성: {best_cv[0].upper()}가 가장 예측 가능 "
+                f"(CV: {best_cv[1]:.1f}% vs {worst_cv[0].upper()}: {worst_cv[1]:.1f}%)"
+            )
+
+    # 5. Starvation 비교
+    if any('starvation_pct' in m for m in metrics.values()):
+        starv_scores = {name: m.get('starvation_pct', 0) for name, m in metrics.items()}
+        has_starv = {k: v for k, v in starv_scores.items() if v > 0}
+        no_starv = {k: v for k, v in starv_scores.items() if v == 0}
+        if has_starv and no_starv:
+            insights.append(
+                f"🚨 Starvation: {', '.join(k.upper() for k in has_starv)}에서 "
+                f"{max(has_starv.values()):.1f}% 스레드 미실행. "
+                f"{', '.join(k.upper() for k in no_starv)}는 안전"
+            )
+
+    # 6. 메트릭별 권장사항
+    metric_descriptions = {
+        'avg_wait': (
+            "📈 평균 대기 시간 최소화:\n"
             "  - Interactive 작업에 적합\n"
-            "  - 사용자 응답성이 중요한 경우"
-        )
-    elif primary_metric == 'avg_turnaround':
-        insights.append(
-            "📈 반환 시간 최소화:\n"
+            "  - 사용자 응답성이 중요한 경우\n"
+            "  - MLFQS/Basic이 유리한 메트릭"
+        ),
+        'avg_turnaround': (
+            "📈 평균 반환 시간 최소화:\n"
             "  - 배치 작업 처리에 적합\n"
-            "  - 전체 처리량이 중요한 경우"
-        )
-    elif primary_metric == 'fairness':
-        insights.append(
-            "📈 공정성 최대화:\n"
+            "  - 전체 처리량이 중요한 경우\n"
+            "  - MLFQS/Basic이 유리한 메트릭"
+        ),
+        'cv_wait': (
+            "📈 대기 시간 일관성 (변동계수):\n"
+            "  - 낮을수록 예측 가능한 응답 시간\n"
+            "  - SLA 보장이 필요한 서비스에 중요\n"
+            "  - CFS가 유리한 메트릭"
+        ),
+        'p99_wait': (
+            "📈 99 퍼센타일 대기 시간 (테일 레이턴시):\n"
+            "  - 최악 1% 사용자의 경험\n"
+            "  - p99 SLA가 중요한 서비스에 필수\n"
+            "  - CFS가 유리한 메트릭"
+        ),
+        'worst_ratio': (
+            "📈 최악/평균 비율:\n"
+            "  - 1.0에 가까울수록 균일한 대기\n"
+            "  - 극단적 지연 방지 지표\n"
+            "  - CFS가 유리한 메트릭"
+        ),
+        'fairness': (
+            "📈 공정성 (Jain's Fairness Index):\n"
+            "  - 1.0에 가까울수록 공정한 CPU 분배\n"
             "  - 모든 작업에 공평한 기회\n"
-            "  - Starvation 방지"
+            "  - CFS가 유리한 메트릭"
+        ),
+        'starvation_pct': (
+            "📈 기아율 (Starvation):\n"
+            "  - 0%가 이상적 (모든 스레드 실행)\n"
+            "  - 낮은 우선순위도 실행 보장\n"
+            "  - CFS가 유리한 메트릭"
+        ),
+        'cpu_time_ratio': (
+            "📈 CPU 시간 비율:\n"
+            "  - Nice 값에 따른 CPU 배분 차이\n"
+            "  - 값이 높을수록 nice 효과가 강함"
+        ),
+        'context_switches': (
+            "📈 컨텍스트 스위치:\n"
+            "  - 낮을수록 오버헤드 적음\n"
+            "  - 스케줄러 효율성 지표"
         )
-    elif primary_metric == 'cpu_time_ratio':
-        insights.append(
-            "📈 CPU 시간 비율 향상:\n"
-            "  - 낮은 nice(높은 우선순위) 그룹이 얼마나 더 많은 CPU를 가져갔는지 측정\n"
-            "  - 값이 높을수록 nice 차이를 제대로 반영"
-        )
+    }
+
+    if primary_metric in metric_descriptions:
+        insights.append(metric_descriptions[primary_metric])
 
     return insights

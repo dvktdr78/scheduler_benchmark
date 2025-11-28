@@ -31,6 +31,10 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+      /* Streamlit 기본 헤더 숨기기 */
+      header[data-testid="stHeader"] {
+        display: none !important;
+      }
       .cta-link {
         text-decoration: underline;
         text-decoration-thickness: 2px;
@@ -47,20 +51,20 @@ st.markdown(
         padding-left: 1.5rem;
         padding-right: 1.5rem;
       }
-      /* 메인 헤더(타이틀 + 실행 버튼) 고정 */
-      div[data-testid="stHorizontalBlock"]:first-of-type {
-        position: sticky;
-        top: 0;
-        z-index: 200;
-        background: #0e1117;
-        padding-top: 4px;
-        padding-bottom: 10px;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-      }
-      div[data-testid="stHorizontalBlock"]:first-of-type > div {
-        align-items: center;
+      /* 메인 영역 상단 패딩 제거 */
+      .stMainBlockContainer {
+        padding-top: 0 !important;
       }
     </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# 헤더 시작 마커
+st.markdown('<div id="header-start"></div>', unsafe_allow_html=True)
+
+st.markdown(
+    """
     <div style="font-size:22px; font-weight:700; text-align:center; margin-bottom:12px;">
       👉 <a class="cta-link" href="https://github.com/dvktdr78/scheduler_benchmark?tab=readme-ov-file#%EC%8A%A4%EC%BC%80%EC%A4%84%EB%9F%AC-%EB%B2%A4%EC%B9%98%EB%A7%88%ED%81%AC-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-%EC%86%8C%EA%B0%90%EB%AC%B8" target="_blank">스케줄러 벤치마크 프로젝트 소감문 보기</a> 👈
     </div>
@@ -78,26 +82,70 @@ with header_col2:
         unsafe_allow_html=True,
     )
 
-# 강제 sticky 적용 (Streamlit DOM 변화 대응)
+# 헤더 끝 마커
+st.markdown('<div id="header-end"></div>', unsafe_allow_html=True)
+
+# JS로 헤더 영역 sticky 적용
 components.html(
     """
     <script>
     (function() {
-      const setSticky = () => {
+      function makeHeaderSticky() {
         const doc = window.parent.document;
-        const header = doc.querySelector('div[data-testid="stHorizontalBlock"]');
-        if (!header) return;
-        header.style.position = 'sticky';
-        header.style.top = '0px';
-        header.style.zIndex = '200';
-        header.style.background = '#0e1117';
-        header.style.paddingTop = '4px';
-        header.style.paddingBottom = '10px';
-        header.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
-      };
-      setSticky();
-      const mo = new MutationObserver(() => setSticky());
-      mo.observe(window.parent.document.body, { childList: true, subtree: true });
+        const start = doc.getElementById('header-start');
+        const end = doc.getElementById('header-end');
+        if (!start || !end) return false;
+        if (doc.getElementById('sticky-header-wrapper')) return true;
+
+        // start의 부모 컨테이너 (stVerticalBlock) 찾기
+        let startContainer = start.closest('[data-testid="stVerticalBlockBorderWrapper"]')
+                          || start.closest('.stMarkdown')?.parentElement;
+        let endContainer = end.closest('[data-testid="stVerticalBlockBorderWrapper"]')
+                        || end.closest('.stMarkdown')?.parentElement;
+
+        if (!startContainer || !endContainer) return false;
+
+        // 공통 부모 찾기
+        const parent = startContainer.parentElement;
+        if (!parent) return false;
+
+        // wrapper 생성
+        const wrapper = doc.createElement('div');
+        wrapper.id = 'sticky-header-wrapper';
+        wrapper.style.cssText = `
+          position: sticky;
+          top: 0;
+          z-index: 999;
+          background: #0e1117;
+          padding: 12px 1rem 16px 1rem;
+          margin: 0 -1rem 0 -1rem;
+        `;
+
+        // start부터 end까지의 요소들 수집
+        const children = Array.from(parent.children);
+        const startIdx = children.indexOf(startContainer);
+        const endIdx = children.indexOf(endContainer);
+
+        if (startIdx === -1 || endIdx === -1 || startIdx > endIdx) return false;
+
+        // wrapper 삽입
+        parent.insertBefore(wrapper, startContainer);
+
+        // 요소들을 wrapper로 이동
+        for (let i = startIdx; i <= endIdx; i++) {
+          wrapper.appendChild(children[i]);
+        }
+
+        return true;
+      }
+
+      // 여러 번 시도
+      let attempts = 0;
+      const interval = setInterval(() => {
+        if (makeHeaderSticky() || attempts++ > 50) {
+          clearInterval(interval);
+        }
+      }, 100);
     })();
     </script>
     """,
@@ -136,11 +184,41 @@ st.markdown("""
 - 강점: 공정성 탁월(Jain Index 높음), nice 효과 강함, starvation 없음.  
 - 약점: I/O 우대는 별도 없음, 정렬된 준비큐 관리 비용 존재.
 
-### ⚖️ 여기서 말하는 공정성은?
+### 📊 메트릭 설명
+
+메트릭은 크게 **처리량**, **일관성**, **공정성** 세 가지로 나뉩니다. 각 스케줄러의 강점이 다르게 드러납니다.
+
+**📊 처리량 메트릭** (낮을수록 좋음) - *MLFQS/Basic이 유리*
+| 메트릭 | 설명 |
+|--------|------|
+| **평균 대기 시간** | 스레드가 READY 상태에서 기다린 평균 시간 |
+| **평균 반환 시간** | 도착부터 완료까지 걸린 평균 시간 |
+
+**📈 일관성 메트릭** (낮을수록 좋음) - *CFS가 유리*
+| 메트릭 | 설명 | 중요성 |
+|--------|------|--------|
+| **변동계수 (CV)** | 대기 시간의 표준편차/평균×100 | 예측 가능한 응답 시간 |
+| **P99 대기 시간** | 99%가 경험하는 최대 대기 시간 | SLA 보장, 테일 레이턴시 |
+| **최악/평균 비율** | 최악 대기/평균 대기 | 극단적 지연 방지 |
+
+> 💡 **SLA (Service Level Agreement)**: 서비스 제공자가 고객에게 보장하는 품질 수준. 예: "요청의 99%는 100ms 이내 응답" 같은 약속. P99 지표가 SLA 기준으로 자주 사용됩니다.
+
+**⚖️ 공정성 메트릭** - *CFS가 유리*
+| 메트릭 | 설명 | 이상적 값 |
+|--------|------|----------|
+| **공정성 (Jain Index)** | 가중치 비례 CPU 분배 | 1.0 |
+| **기아율** | 실행 안된 스레드 비율 | 0% |
+
+### ⚖️ 공정성 계산 방식
 - **기대 몫(entitlement)**: 스레드가 READY/RUNNING이었던 시간 × (nice를 weight로 변환한 값). nice가 낮을수록 더 큰 몫을 갖습니다.
 - **실측 몫(actual)**: 관찰 구간 동안 실제로 받은 CPU 시간 비중.
 - **공정성 점수**: `actual ÷ entitlement`가 모든 스레드에서 1에 가까울수록 이상적이며, 이 비율들에 Jain Index를 적용해 0~1로 표시합니다(1.0 = 가중치 비례로 완벽 분배).
 - runnable 시간이 없거나 스레드가 끝나지 않은 경우는 `N/A`로 표기해 0.0과 혼동하지 않습니다.
+
+### 💡 왜 메트릭에 따라 승자가 다른가?
+- **MLFQS/Basic**: 우선순위 기반으로 빠른 작업 완료 → **처리량 메트릭**에서 유리
+- **CFS**: 공정성 기반으로 모든 스레드에 균등 배분 → **일관성/공정성 메트릭**에서 유리
+- 실제 서비스에서는 **평균보다 p99이 더 중요** (SLA 기준이 보통 p99)
 """)
 
 # ========== 설정 UI ==========
@@ -173,6 +251,19 @@ selected_test_name = st.sidebar.selectbox(
 # 선택된 테스트 가져오기
 selected_test_idx = test_names.index(selected_test_name)
 selected_test = tests_in_category[selected_test_idx]
+
+# 테스트 변경 감지 → 이전 결과 삭제
+if 'current_test_id' not in st.session_state:
+    st.session_state['current_test_id'] = selected_test.test_id
+elif st.session_state['current_test_id'] != selected_test.test_id:
+    # 테스트가 변경되면 이전 결과 삭제
+    st.session_state['current_test_id'] = selected_test.test_id
+    if 'report' in st.session_state:
+        del st.session_state['report']
+    if 'dataframes' in st.session_state:
+        del st.session_state['dataframes']
+    if 'test' in st.session_state:
+        del st.session_state['test']
 
 # 테스트 상세 정보
 st.sidebar.markdown("---")
@@ -263,6 +354,14 @@ if run_clicked:
         st.info(
             f"💡 공정성 극단 Nice: 최대 {actual_max_ticks:,} ticks까지 실행 "
             f"(입력값 {max_ticks:,} / 총 작업의 30% 기준)"
+        )
+    elif selected_test.test_id in ["fairness_cpu", "fairness_mixed"]:
+        total_work = sum(t.burst_time for t in base_threads)
+        suggested_ticks = int(total_work * 0.5)  # 50%만 실행해서 완료 전 측정
+        actual_max_ticks = min(max_ticks, suggested_ticks)
+        st.info(
+            f"💡 공정성 테스트: 최대 {actual_max_ticks:,} ticks까지 실행 "
+            f"(입력값 {max_ticks:,} / 총 작업의 50% 기준)"
         )
 
     # 스케줄러 실행
@@ -357,33 +456,38 @@ if 'report' in st.session_state:
 
             metrics = report['metrics'][scheduler_name]
 
+            # 메트릭 정의
+            metric_labels = {
+                'avg_wait': ('평균 대기', 'ticks'),
+                'avg_turnaround': ('평균 반환', 'ticks'),
+                'cv_wait': ('일관성(CV)', '%'),
+                'p99_wait': ('P99 대기', 'ticks'),
+                'worst_ratio': ('최악/평균', 'x'),
+                'fairness': ('공정성', ''),
+                'starvation_pct': ('기아율', '%'),
+                'cpu_time_ratio': ('CPU비율', 'x'),
+                'context_switches': ('컨텍스트SW', ''),
+            }
+
             # 주요 메트릭 강조 표시
-            if test.primary_metric == 'avg_wait':
-                st.metric("⭐ 평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
-                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
-                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
-            elif test.primary_metric == 'avg_turnaround':
-                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
-                st.metric("⭐ 평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
-                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
-            elif test.primary_metric == 'fairness':
-                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
-                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
-                st.metric("⭐ 공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
-            elif test.primary_metric == 'cpu_time_ratio':
-                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
-                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
-                st.metric("⭐ CPU 시간 비율", f"{fmt_metric(metrics['cpu_time_ratio'], ':.1f')}x")
-                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
-            elif test.primary_metric == 'context_switches':
-                st.metric("⭐ 컨텍스트 스위치", f"{metrics['context_switches']}")
-                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
-                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
-                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
-            else:
-                st.metric("평균 대기 시간", f"{fmt_metric(metrics['avg_wait'])} ticks")
-                st.metric("평균 반환 시간", f"{fmt_metric(metrics['avg_turnaround'])} ticks")
-                st.metric("공정성 지수", f"{fmt_metric(metrics['fairness'], ':.4f')}")
+            pm = test.primary_metric
+            is_primary = lambda k: '⭐ ' if k == pm else ''
+
+            # 처리량 메트릭 (MLFQS/Basic 유리)
+            st.caption("📊 처리량 메트릭")
+            st.metric(f"{is_primary('avg_wait')}평균 대기", f"{fmt_metric(metrics.get('avg_wait'))} ticks")
+            st.metric(f"{is_primary('avg_turnaround')}평균 반환", f"{fmt_metric(metrics.get('avg_turnaround'))} ticks")
+
+            # 일관성 메트릭 (CFS 유리)
+            st.caption("📈 일관성 메트릭")
+            st.metric(f"{is_primary('cv_wait')}변동계수", f"{fmt_metric(metrics.get('cv_wait'), ':.1f')}%")
+            st.metric(f"{is_primary('p99_wait')}P99 대기", f"{fmt_metric(metrics.get('p99_wait'))} ticks")
+            st.metric(f"{is_primary('worst_ratio')}최악/평균", f"{fmt_metric(metrics.get('worst_ratio'), ':.2f')}x")
+
+            # 공정성 메트릭 (CFS 유리)
+            st.caption("⚖️ 공정성 메트릭")
+            st.metric(f"{is_primary('fairness')}공정성", f"{fmt_metric(metrics.get('fairness'), ':.4f')}")
+            st.metric(f"{is_primary('starvation_pct')}기아율", f"{fmt_metric(metrics.get('starvation_pct'), ':.1f')}%")
 
             if metrics.get('has_starvation'):
                 st.warning("⚠️ Starvation 위험")
@@ -406,11 +510,18 @@ if 'report' in st.session_state:
     # 비교 차트
     st.header("📊 성능 비교")
 
-    # 메트릭 비교 테이블
+    # 메트릭 비교 테이블 (카테고리별 구분)
     metrics_rows = [
-        ('평균 대기 시간', 'avg_wait'),
-        ('평균 반환 시간', 'avg_turnaround'),
-        ('공정성', 'fairness'),
+        # 처리량 메트릭 (MLFQS/Basic 유리)
+        ('📊 평균 대기 시간', 'avg_wait'),
+        ('📊 평균 반환 시간', 'avg_turnaround'),
+        # 일관성 메트릭 (CFS 유리)
+        ('📈 변동계수 (CV)', 'cv_wait'),
+        ('📈 P99 대기 시간', 'p99_wait'),
+        ('📈 최악/평균 비율', 'worst_ratio'),
+        # 공정성 메트릭 (CFS 유리)
+        ('⚖️ 공정성 (Jain)', 'fairness'),
+        ('⚖️ 기아율', 'starvation_pct'),
     ]
     if test.primary_metric == 'cpu_time_ratio':
         metrics_rows.append(('CPU 시간 비율', 'cpu_time_ratio'))

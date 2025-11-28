@@ -280,6 +280,84 @@ TEST_SCALABILITY_500 = BenchmarkTest(
 )
 
 
+# 6. 일관성 테스트 (CFS 장점)
+TEST_CONSISTENCY_CV = BenchmarkTest(
+    test_id="consistency_cv",
+    name="일관성: 변동계수",
+    goal="대기 시간의 예측 가능성",
+    workload_type="mixed",
+    thread_count=100,
+    schedulers=["basic", "mlfqs", "cfs"],
+    primary_metric="cv_wait",
+    description="""
+    Mixed 워크로드 (Nice -5~5), 100 스레드
+
+    측정: 변동계수 (CV) = 표준편차/평균 × 100
+    의미: 낮을수록 대기 시간이 예측 가능
+    용도: SLA 보장이 필요한 서비스
+
+    CFS 장점: 공정성으로 인해 모든 스레드가 비슷한 대기 경험
+    """
+)
+
+TEST_CONSISTENCY_P99 = BenchmarkTest(
+    test_id="consistency_p99",
+    name="일관성: P99 레이턴시",
+    goal="최악 1%의 대기 시간",
+    workload_type="mixed",
+    thread_count=100,
+    schedulers=["basic", "mlfqs", "cfs"],
+    primary_metric="p99_wait",
+    description="""
+    Mixed 워크로드 (Nice -5~5), 100 스레드
+
+    측정: 99 퍼센타일 대기 시간
+    의미: 낮을수록 테일 레이턴시가 좋음
+    용도: p99 SLA가 중요한 서비스 (웹, API)
+
+    CFS 장점: 극단적 지연을 방지
+    """
+)
+
+TEST_CONSISTENCY_WORST = BenchmarkTest(
+    test_id="consistency_worst",
+    name="일관성: 최악/평균 비율",
+    goal="극단적 지연 방지",
+    workload_type="mixed",
+    thread_count=100,
+    schedulers=["basic", "mlfqs", "cfs"],
+    primary_metric="worst_ratio",
+    description="""
+    Mixed 워크로드 (Nice -5~5), 100 스레드
+
+    측정: 최악 대기 시간 / 평균 대기 시간
+    의미: 1.0에 가까울수록 균일한 대기
+    용도: 공정한 서비스 품질 보장
+
+    CFS 장점: 우선순위 역전 없이 균일한 배분
+    """
+)
+
+TEST_STARVATION = BenchmarkTest(
+    test_id="starvation",
+    name="기아 방지: 극단적 Nice",
+    goal="모든 스레드 실행 보장",
+    workload_type="extreme_nice",
+    thread_count=50,
+    schedulers=["basic", "mlfqs", "cfs"],
+    primary_metric="starvation_pct",
+    description="""
+    극단적 Nice 워크로드 (Nice -20 vs 19)
+
+    측정: 실행 안된 스레드 비율 (%)
+    의미: 0%가 이상적 (모두 실행됨)
+    용도: Starvation 방지 능력 검증
+
+    CFS 장점: 모든 스레드가 공정하게 실행 기회 획득
+    """
+)
+
+
 # ========== 테스트 카테고리 ==========
 
 TEST_CATEGORIES: Dict[str, Dict[str, Any]] = {
@@ -294,6 +372,10 @@ TEST_CATEGORIES: Dict[str, Dict[str, Any]] = {
     "공정성": {
         "description": "CPU 시간 배분의 공정성 (MLFQS vs CFS)",
         "tests": [TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE]
+    },
+    "일관성 (CFS 장점)": {
+        "description": "대기 시간의 예측 가능성과 일관성 (CFS 유리)",
+        "tests": [TEST_CONSISTENCY_CV, TEST_CONSISTENCY_P99, TEST_CONSISTENCY_WORST, TEST_STARVATION]
     },
     "Nice 효과": {
         "description": "Nice 값의 실제 효과 검증 (MLFQS vs CFS)",
@@ -312,6 +394,7 @@ ALL_TESTS = [
     TEST_GENERAL_MIXED, TEST_GENERAL_CPU, TEST_GENERAL_IO,
     TEST_APP_WEB, TEST_APP_DATABASE, TEST_APP_BATCH, TEST_APP_GAMING,
     TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE,
+    TEST_CONSISTENCY_CV, TEST_CONSISTENCY_P99, TEST_CONSISTENCY_WORST, TEST_STARVATION,
     TEST_NICE_EFFECT,
     TEST_SCALABILITY_10, TEST_SCALABILITY_100, TEST_SCALABILITY_500
 ]
