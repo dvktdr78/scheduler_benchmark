@@ -158,24 +158,7 @@ TEST_APP_GAMING = BenchmarkTest(
 )
 
 # 3. 공정성 테스트 (MLFQS vs CFS만)
-TEST_FAIRNESS_CPU = BenchmarkTest(
-    test_id="fairness_cpu",
-    name="공정성: CPU 시간 배분",
-    goal="모든 스레드에게 공정한 CPU 시간 배분",
-    workload_type="cpu_bound",
-    thread_count=50,
-    schedulers=["mlfqs", "cfs"],  # Basic 제외
-    primary_metric="fairness",
-    description="""
-    CPU-bound 워크로드 (Nice 0):
-      - CPU burst: 300-800 ticks
-      - I/O 없음
-
-    목표: Starvation 방지, 공정한 CPU 배분
-    비교: MLFQS vs CFS (Basic은 starvation 위험으로 제외)
-    메트릭: Jain's Fairness Index (1.0에 가까울수록 공정)
-    """
-)
+# NOTE: Nice 0 통일 워크로드(cpu_bound)는 공정성 차이 측정 불가하여 제거됨
 
 TEST_FAIRNESS_MIXED = BenchmarkTest(
     test_id="fairness_mixed",
@@ -374,7 +357,7 @@ TEST_CATEGORIES: Dict[str, Dict[str, Any]] = {
     },
     "공정성": {
         "description": "CPU 시간 배분의 공정성 (MLFQS vs CFS)",
-        "tests": [TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE]
+        "tests": [TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE]
     },
     "일관성 (CFS 장점)": {
         "description": "대기 시간의 예측 가능성과 일관성 (CFS 유리)",
@@ -396,7 +379,7 @@ TEST_CATEGORIES: Dict[str, Dict[str, Any]] = {
 ALL_TESTS = [
     TEST_GENERAL_MIXED, TEST_GENERAL_CPU, TEST_GENERAL_IO,
     TEST_APP_WEB, TEST_APP_DATABASE, TEST_APP_BATCH, TEST_APP_GAMING,
-    TEST_FAIRNESS_CPU, TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE,
+    TEST_FAIRNESS_MIXED, TEST_FAIRNESS_EXTREME_NICE,
     TEST_CONSISTENCY_CV, TEST_CONSISTENCY_P99, TEST_CONSISTENCY_WORST, TEST_STARVATION,
     TEST_NICE_EFFECT,
     TEST_SCALABILITY_10, TEST_SCALABILITY_100, TEST_SCALABILITY_500
