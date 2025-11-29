@@ -34,15 +34,54 @@ streamlit run app.py   # 또는 프로젝트 루트에서 ./run.sh
 | I/O-bound avg_wait | Basic 7,603 / **MLFQS 7,474** / CFS 7,495 | MLFQS |
 | CPU-bound avg_turnaround | Basic 22,924 / **MLFQS 22,908** / CFS 22,918 | MLFQS |
 | 공정성(mixed, fairness) | MLFQS 0.509 (starvation 32%) / **CFS 0.999** (starvation 0%) | CFS |
-| Nice 효과(cpu_time_ratio, log) | **MLFQS 4,999×** / CFS 199× | CFS* |
+| Nice 효과(cpu_time_ratio, log) | MLFQS 4,999× (starvation 48%) / **CFS 199×** | CFS* |
 | P99 대기(consistency_p99) | **Basic 28,262** / CFS 28,262 / MLFQS 28,338 | Basic (P99) |
 
-\* nice_effect의 primary metric은 CPU 시간 비율로, 더 작을수록 공정한 분배에 가깝습니다.\
-\* 단위: ticks. 모든 테스트는 thread_count, max_ticks 등 정의된 설정 그대로 실행.
+\* nice_effect는 CPU 시간 비율이 낮을수록 가중치 비례에 가까움.\
+\* 단위: ticks. 모든 테스트는 정의된 thread_count, max_ticks, seed=42 그대로 실행.
+
+### 전체 테스트 결과 (seed=42)
+
+**일반·실제 워크로드**
+
+| 테스트 | 메트릭 | 승자 | 핵심 수치 |
+|--------|-------|------|-----------|
+| 일반 혼합 | avg_wait | Basic | 8,085 (MLFQS 9,700 / CFS 10,838) |
+| CPU-bound | avg_turnaround | MLFQS | 22,908 (Basic 22,924 / CFS 22,918) |
+| I/O-bound | avg_wait | MLFQS | 7,474 (Basic 7,603 / CFS 7,495) |
+| 웹 서버 | avg_turnaround | Basic | 1,062 (MLFQS 1,065 / CFS 1,082) |
+| 데이터베이스 | avg_turnaround | CFS | 5,332 (MLFQS 5,338 / Basic 5,381) |
+| 배치 처리 | avg_turnaround | MLFQS | 25,388 (Basic 25,406 / CFS 25,408) |
+| 게임/실시간 | avg_wait | Basic | 8,813 (MLFQS 8,813 / CFS 8,925) |
+
+**공정성·일관성·Nice 효과**
+
+| 테스트 | 메트릭 | 승자 | 핵심 수치 |
+|--------|-------|------|-----------|
+| 공정성 (mixed) | fairness | CFS | 0.999 vs MLFQS 0.509 (starvation 32%) |
+| 공정성 (extreme nice) | fairness | CFS | 0.525 vs MLFQS 0.500 (starvation 50%) |
+| Nice 효과 | cpu_time_ratio | CFS | 199× vs MLFQS 4,999× (starvation 48%) |
+| 일관성 (CV) | cv_wait | CFS | 29.6% vs Basic 54.5% / MLFQS 43.3% |
+| 일관성 (P99) | p99_wait | Basic | 28,262 vs CFS 28,262 / MLFQS 28,338 |
+| 일관성 (worst/avg) | worst_ratio | CFS | 1.40 vs MLFQS 1.59 / Basic 1.87 |
+| 기아 방지 | starvation_pct | CFS | 0% vs Basic/MLFQS 48% |
+
+**확장성**
+
+| 테스트 | 메트릭 | 승자 | 핵심 수치 |
+|--------|-------|------|-----------|
+| 10 스레드 | context_switches | Basic | 361 vs MLFQS 644 / CFS 682 |
+| 100 스레드 | avg_wait | Basic | 15,183 vs MLFQS 17,836 / CFS 20,188 |
+| 500 스레드 | avg_wait | CFS | 34,697 vs Basic 31,696*, MLFQS 34,424* (starvation Basic 76% / MLFQS 48%) |
+
+※ *starvation이 높은 스케줄러는 승자 선정에서 제외됩니다.
 
 ## 데모 · 그래프
 
 ![I/O-bound avg_wait](assets/io_avg_wait.png)
+![General mixed avg_wait](assets/general_mixed_avg_wait.png)
+![Fairness (mixed)](assets/fairness_mixed.png)
+![Scalability 10 threads (context switches)](assets/scalability_10_ctx.png)
 ![Nice effect ratio (log)](assets/nice_effect_ratio.png)
 
 ## 핵심 버그/인사이트 Top3
