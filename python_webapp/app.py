@@ -425,7 +425,10 @@ if 'report' in st.session_state:
     st.markdown(f"**비교 대상:** {', '.join(s.upper() for s in test.schedulers)}")
 
     # 승자 발표
-    st.header(f"🏆 승자: {report['winner'].upper()}")
+    if report['winner'] == 'tie':
+        st.header("🤝 무승부 (동점)")
+    else:
+        st.header(f"🏆 승자: {report['winner'].upper()}")
 
     # 메트릭 비교 (동적 컬럼 수)
     scheduler_names = test.schedulers

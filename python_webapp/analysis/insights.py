@@ -355,27 +355,32 @@ def generate_comparison_report(
             return float('inf') if default_for_lower else float('-inf')
         return val
 
+    # 동점 여부 확인을 위해 값들 추출
+    metric_values = {
+        name: get_metric_value(m, primary_metric, primary_metric in lower_is_better_metrics)
+        for name, m in valid_candidates.items()
+    }
+    unique_values = set(metric_values.values())
+
     if primary_metric in lower_is_better_metrics:
         # 낮을수록 좋음
-        winner = min(
-            valid_candidates.items(),
-            key=lambda x: get_metric_value(x[1], primary_metric, True)
-        )[0]
+        best_value = min(metric_values.values())
+        winners = [name for name, val in metric_values.items() if val == best_value]
     elif primary_metric in higher_is_better_metrics:
         # 높을수록 좋음
-        winner = max(
-            valid_candidates.items(),
-            key=lambda x: get_metric_value(x[1], primary_metric, False)
-        )[0]
+        best_value = max(metric_values.values())
+        winners = [name for name, val in metric_values.items() if val == best_value]
     elif primary_metric == 'cpu_time_ratio':
         # cpu_time_ratio: 기아율 낮은 쪽 우선, 같으면 ratio 높은 쪽
-        # (기아 없이 nice 효과를 보여주는 스케줄러가 승자)
-        winner = min(
-            valid_candidates.items(),
-            key=lambda x: (x[1].get('starvation_pct', 0), -x[1].get('cpu_time_ratio', 0))
-        )[0]
+        sort_key = lambda x: (x[1].get('starvation_pct', 0), -x[1].get('cpu_time_ratio', 0))
+        sorted_candidates = sorted(valid_candidates.items(), key=sort_key)
+        best_key = sort_key(sorted_candidates[0])
+        winners = [name for name, m in valid_candidates.items() if sort_key((name, m)) == best_key]
     else:
-        winner = list(valid_candidates.keys())[0]
+        winners = list(valid_candidates.keys())[:1]
+
+    # 동점이면 "tie", 아니면 승자
+    winner = "tie" if len(winners) > 1 else winners[0]
 
     # Insight 생성
     insights = generate_insights(metrics, scheduler_names, primary_metric, improvements, baseline_name)
