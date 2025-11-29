@@ -258,7 +258,7 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 
 ## 테스트 카테고리
 
-총 **18개 테스트**, **6개 카테고리**로 구성
+총 **17개 테스트**, **6개 카테고리**로 구성
 
 ### 1. 일반 워크로드 (3개 테스트, 3-way 비교)
 
@@ -291,15 +291,16 @@ weight = PRIO_TO_WEIGHT[nice + 20]
 - **web_server/gaming**: Nice 차이로 우선순위 처리 능력 테스트
 - **database/batch**: Nice 0으로 통일
 
-### 3. 공정성 (3개 테스트, MLFQS vs CFS)
+### 3. 공정성 (2개 테스트, MLFQS vs CFS)
 
 **목적**: CPU 시간 배분의 공정성 측정
 
 | 테스트 | 워크로드 | 주요 메트릭 | 비교 대상 |
 |--------|---------|------------|-----------|
-| 공정성: CPU 시간 배분 | cpu_bound | fairness | MLFQS + CFS |
 | 공정성: 혼합 워크로드 | mixed | fairness | MLFQS + CFS |
 | 공정성: 극단 Nice 가중치 | extreme_nice_fairness | fairness | MLFQS + CFS |
+
+> **Note**: cpu_bound 워크로드는 모든 스레드가 Nice 0으로 동일하여 스케줄러 간 공정성 차이가 없어 테스트에서 제외됨.
 
 **왜 Basic을 제외하는가?**
 - Basic Priority는 정적 우선순위 기반으로 starvation 위험 존재
@@ -1317,12 +1318,12 @@ class Test:
 
 #### 선택적 비교의 예시
 ```python
-# 공정성 테스트: MLFQS vs CFS만
+# 공정성 테스트: MLFQS vs CFS만 (Nice 차이가 있는 워크로드)
 Test(
-    test_id="fairness_cpu",
-    name="공정성: CPU 시간 배분",
+    test_id="fairness_mixed",
+    name="공정성: 혼합 워크로드",
     schedulers=["mlfqs", "cfs"],  # Basic 제외!
-    workload_type="cpu_bound",
+    workload_type="mixed",
     goal="공정한 CPU 배분",
     primary_metric="fairness",
     description="..."
@@ -1342,11 +1343,11 @@ Test(
 #### 총 비교 수
 - 일반 워크로드: 3개 × 3-way = 9개
 - 실제 응용: 4개 × 3-way = 12개
-- 공정성: 3개 × 2-way = 6개
+- 공정성: 2개 × 2-way = 4개
 - 일관성: 4개 × 3-way = 12개
 - Nice 효과: 1개 × 2-way = 2개
 - 확장성: 3개 × 3-way = 9개
-- **총 50개 비교 (18개 테스트)**
+- **총 48개 비교 (17개 테스트)**
 
 ### 4.2 Burst Time 설계 철학
 
