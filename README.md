@@ -1,10 +1,61 @@
 # 스케줄러 벤치마크 시스템
 
-- 3가지 CPU 스케줄러(Basic Priority, MLFQS, CFS)를 목표 기반 테스트로 비교 분석하는 벤치마크 시스템입니다.
-- 주소: http://34.47.105.226:8501
+실제 OS 스케줄러 3종(Basic Priority, MLFQS, CFS)을 목표 기반 테스트로 비교하는 Streamlit 벤치마크입니다. (라이브 데모: http://34.47.105.226:8501)
+
+## 빠른 요약
+- **차별점**: 모든 조합 비교가 아닌 **테스트 목표별로 스케줄러를 선택**해 공정성·정확성을 확보.
+- **구성**: 18개 테스트, 6개 카테고리, 9개 워크로드, 실시간 그래프/리포트 제공.
+- **상태**: GCP에서 24/7 구동, run.sh로 바로 실행 가능.
+- **핵심 스토리**: time slice 미구현, CFS 정밀도, Basic FIFO 등 **6개 크리티컬 버그**를 잡으며 알고리즘-측정-설계 인사이트를 정리.
+
+## 빠른 실행
+```bash
+git clone https://github.com/dvktdr78/scheduler_benchmark.git
+cd scheduler_benchmark/python_webapp
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py   # 또는 프로젝트 루트에서 ./run.sh
+```
+
+## 결과 한눈에 보기
+
+| 목표/시나리오 | 승자/특징 | 이유 |
+|---------------|-----------|------|
+| CPU-bound·순수 처리량 | Basic (간단) | 오버헤드 최소, 예측 가능한 실행 순서 |
+| I/O/대화형 응답성 | MLFQS | recent_cpu 기반 동적 우선순위로 I/O 우대 |
+| 공정성·일관성(P99/CV) | CFS | vruntime 가중치 기반 공정 분배, starvation 없음 |
+| Nice 극단 테스트 | MLFQS: 극단적 효과 / CFS: 가중치 비례 | MLFQS 우선순위 공식의 큰 nice 보정, CFS는 weight 기반 균형 |
+| Starvation 위험 | CFS 0%, Basic 위험 | 정적 우선순위는 기아 가능, CFS는 공정성 유지 |
+
+## 샘플 결과 (seed=42)
+
+| 테스트 | 주요 수치 (낮을수록 좋음*) | 승자 |
+|--------|--------------------------|------|
+| I/O-bound avg_wait | Basic 7,603 / **MLFQS 7,474** / CFS 7,495 | MLFQS |
+| CPU-bound avg_turnaround | Basic 22,924 / **MLFQS 22,908** / CFS 22,918 | MLFQS |
+| 공정성(mixed, fairness) | MLFQS 0.509 (starvation 32%) / **CFS 0.999** (starvation 0%) | CFS |
+| Nice 효과(cpu_time_ratio, log) | **MLFQS 4,999×** / CFS 199× | CFS* |
+| P99 대기(consistency_p99) | **Basic 28,262** / CFS 28,262 / MLFQS 28,338 | Basic (P99) |
+
+\* nice_effect의 primary metric은 CPU 시간 비율로, 더 작을수록 공정한 분배에 가깝습니다.\
+\* 단위: ticks. 모든 테스트는 thread_count, max_ticks 등 정의된 설정 그대로 실행.
+
+## 데모 · 그래프
+
+![I/O-bound avg_wait](assets/io_avg_wait.png)
+![Nice effect ratio (log)](assets/nice_effect_ratio.png)
+
+## 핵심 버그/인사이트 Top3
+- **Time slice 미구현 → FCFS화**: 시뮬레이터에 선점 로직을 넣어 스케줄러 차이를 복원.
+- **CFS vruntime 정밀도 0**: 정수 나눗셈 스케일을 1000배로 올려 가중치 비례 공정성을 회복.
+- **Basic FIFO 오류**: TID 기반 선택을 큐 삽입 순서 기반 FIFO로 수정해 편향 제거.
 
 ## 📋 목차
 
+- [빠른 요약](#빠른-요약)
+- [빠른 실행](#빠른-실행)
+- [결과 한눈에 보기](#결과-한눈에-보기)
+- [핵심 버그/인사이트 Top3](#핵심-버그인사이트-top3)
 - [개요](#개요)
 - [아키텍처](#아키텍처)
 - [설치 및 실행](#설치-및-실행)
