@@ -294,37 +294,38 @@ def generate_comparison_report(
     for scheduler_name, threads in scheduler_results.items():
         metrics[scheduler_name] = calculate_scheduler_metrics(threads)
 
-    # Baseline 결정 (basic이 있으면 baseline, 없으면 첫번째)
+    # Baseline 결정 (basic이 있으면 baseline, 없으면 알파벳 순 첫번째)
     scheduler_names = list(scheduler_results.keys())
-    baseline_name = 'basic' if 'basic' in scheduler_names else scheduler_names[0]
+    baseline_name = 'basic' if 'basic' in scheduler_names else sorted(scheduler_names)[0]
     baseline_metrics = metrics[baseline_name]
     baseline_value = baseline_metrics.get(primary_metric, 0)
 
     # 개선율 계산
     improvements = {}
+
+    # 메트릭 분류 (공통으로 사용)
+    lower_is_better_metrics = ['avg_wait', 'avg_turnaround', 'context_switches',
+                               'cv_wait', 'p99_wait', 'worst_ratio', 'starvation_pct']
+    higher_is_better_metrics = ['fairness']
+    # cpu_time_ratio는 단순 비교 불가 (측정용 메트릭)
+
     for name, sched_metrics in metrics.items():
         if name == baseline_name:
             continue
 
-        current_value = sched_metrics.get(primary_metric, 0)
+        current_value = sched_metrics.get(primary_metric)
+        # None 값 처리: 비교 불가능하면 스킵
         if current_value is None or baseline_value is None:
             continue
 
-        # 메트릭 종류에 따라 개선 방향 결정
-        # 낮을수록 좋은 메트릭
-        lower_is_better = ['avg_wait', 'avg_turnaround', 'context_switches',
-                          'cv_wait', 'p99_wait', 'worst_ratio', 'starvation_pct']
-        # 높을수록 좋은 메트릭
-        higher_is_better = ['fairness', 'cpu_time_ratio']
-
-        if primary_metric in lower_is_better:
-            # 낮을수록 좋음
+        if primary_metric in lower_is_better_metrics:
+            # 낮을수록 좋음: (baseline - current) / baseline * 100
             if baseline_value > 1.0:
                 improvement = ((baseline_value - current_value) / baseline_value * 100)
             else:
                 improvement = baseline_value - current_value
-        elif primary_metric in higher_is_better:
-            # 높을수록 좋음
+        elif primary_metric in higher_is_better_metrics:
+            # 높을수록 좋음: (current - baseline) / baseline * 100
             if baseline_value > 0.01:
                 improvement = ((current_value - baseline_value) / baseline_value * 100)
             else:
@@ -335,20 +336,46 @@ def generate_comparison_report(
         improvements[f"{name}_vs_{baseline_name}"] = improvement
 
     # 승자 결정 (primary_metric 기준)
-    # 낮을수록 좋은 메트릭
-    lower_is_better = ['avg_wait', 'avg_turnaround', 'context_switches',
-                      'cv_wait', 'p99_wait', 'worst_ratio', 'starvation_pct']
-    # 높을수록 좋은 메트릭
-    higher_is_better = ['fairness', 'cpu_time_ratio']
+    # 기아율이 높은 스케줄러는 승자 후보에서 제외 (10% 이상이면 제외)
+    valid_candidates = {
+        name: m for name, m in metrics.items()
+        if m.get('starvation_pct', 0) < 10
+    }
+    # 모든 스케줄러가 기아율 높으면 원래대로
+    if not valid_candidates:
+        valid_candidates = metrics
 
-    if primary_metric in lower_is_better:
+    # None 값을 안전하게 처리하는 헬퍼 함수
+    def get_metric_value(m: Dict, metric: str, default_for_lower: bool) -> float:
+        """메트릭 값 가져오기 (None 처리 포함)"""
+        val = m.get(metric)
+        if val is None:
+            # 낮을수록 좋은 메트릭: None → 무한대 (최악)
+            # 높을수록 좋은 메트릭: None → -무한대 (최악)
+            return float('inf') if default_for_lower else float('-inf')
+        return val
+
+    if primary_metric in lower_is_better_metrics:
         # 낮을수록 좋음
-        winner = min(metrics.items(), key=lambda x: x[1].get(primary_metric, float('inf')))[0]
-    elif primary_metric in higher_is_better:
+        winner = min(
+            valid_candidates.items(),
+            key=lambda x: get_metric_value(x[1], primary_metric, True)
+        )[0]
+    elif primary_metric in higher_is_better_metrics:
         # 높을수록 좋음
-        winner = max(metrics.items(), key=lambda x: x[1].get(primary_metric, 0))[0]
+        winner = max(
+            valid_candidates.items(),
+            key=lambda x: get_metric_value(x[1], primary_metric, False)
+        )[0]
+    elif primary_metric == 'cpu_time_ratio':
+        # cpu_time_ratio: 기아율 낮은 쪽 우선, 같으면 ratio 높은 쪽
+        # (기아 없이 nice 효과를 보여주는 스케줄러가 승자)
+        winner = min(
+            valid_candidates.items(),
+            key=lambda x: (x[1].get('starvation_pct', 0), -x[1].get('cpu_time_ratio', 0))
+        )[0]
     else:
-        winner = list(metrics.keys())[0]
+        winner = list(valid_candidates.keys())[0]
 
     # Insight 생성
     insights = generate_insights(metrics, scheduler_names, primary_metric, improvements, baseline_name)
@@ -373,13 +400,33 @@ def generate_insights(
     """Insight 생성"""
     insights = []
 
+    # 메트릭 한글 이름 매핑
+    metric_names = {
+        'avg_wait': '평균 대기 시간',
+        'avg_turnaround': '평균 반환 시간',
+        'cv_wait': '대기 시간 변동계수',
+        'p99_wait': 'P99 대기 시간',
+        'worst_ratio': '최악/평균 비율',
+        'fairness': '공정성 지수',
+        'starvation_pct': '기아율',
+        'cpu_time_ratio': 'CPU 시간 비율',
+        'context_switches': '컨텍스트 스위치',
+    }
+    metric_korean = metric_names.get(primary_metric, primary_metric)
+
     # 1. 개선 효과 (개선율이 10% 이상인 경우)
     significant_improvements = {k: v for k, v in improvements.items() if abs(v) > 10}
     if significant_improvements:
         improvement_strs = [f"{k.split('_vs_')[0].upper()} {v:+.1f}%"
                            for k, v in significant_improvements.items()]
+        # 메트릭 설명 추가
+        metric_direction = "낮을수록" if primary_metric in [
+            'avg_wait', 'avg_turnaround', 'context_switches',
+            'cv_wait', 'p99_wait', 'worst_ratio', 'starvation_pct'
+        ] else "높을수록"
         insights.append(
-            f"💡 개선 효과 (vs {baseline_name.upper()}): " + ", ".join(improvement_strs)
+            f"💡 [{metric_korean}] 개선율 (vs {baseline_name.upper()}): " + ", ".join(improvement_strs) +
+            f"\n   ({metric_direction} 좋음, +는 개선 / -는 악화)"
         )
 
     # 2. 공정성 비교 (fairness가 있는 경우)
@@ -425,63 +472,62 @@ def generate_insights(
                 f"{', '.join(k.upper() for k in no_starv)}는 안전"
             )
 
-    # 6. 메트릭별 권장사항
-    metric_descriptions = {
-        'avg_wait': (
-            "📈 평균 대기 시간 최소화:\n"
-            "  - Interactive 작업에 적합\n"
-            "  - 사용자 응답성이 중요한 경우\n"
-            "  - MLFQS/Basic이 유리한 메트릭"
-        ),
-        'avg_turnaround': (
-            "📈 평균 반환 시간 최소화:\n"
-            "  - 배치 작업 처리에 적합\n"
-            "  - 전체 처리량이 중요한 경우\n"
-            "  - MLFQS/Basic이 유리한 메트릭"
-        ),
-        'cv_wait': (
-            "📈 대기 시간 일관성 (변동계수):\n"
-            "  - 낮을수록 예측 가능한 응답 시간\n"
-            "  - SLA 보장이 필요한 서비스에 중요\n"
-            "  - CFS가 유리한 메트릭"
-        ),
-        'p99_wait': (
-            "📈 99 퍼센타일 대기 시간 (테일 레이턴시):\n"
-            "  - 최악 1% 사용자의 경험\n"
-            "  - p99 SLA가 중요한 서비스에 필수\n"
-            "  - CFS가 유리한 메트릭"
-        ),
-        'worst_ratio': (
-            "📈 최악/평균 비율:\n"
-            "  - 1.0에 가까울수록 균일한 대기\n"
-            "  - 극단적 지연 방지 지표\n"
-            "  - CFS가 유리한 메트릭"
-        ),
-        'fairness': (
-            "📈 공정성 (Jain's Fairness Index):\n"
-            "  - 1.0에 가까울수록 공정한 CPU 분배\n"
-            "  - 모든 작업에 공평한 기회\n"
-            "  - CFS가 유리한 메트릭"
-        ),
-        'starvation_pct': (
-            "📈 기아율 (Starvation):\n"
-            "  - 0%가 이상적 (모든 스레드 실행)\n"
-            "  - 낮은 우선순위도 실행 보장\n"
-            "  - CFS가 유리한 메트릭"
-        ),
-        'cpu_time_ratio': (
-            "📈 CPU 시간 비율:\n"
-            "  - Nice 값에 따른 CPU 배분 차이\n"
-            "  - 값이 높을수록 nice 효과가 강함"
-        ),
-        'context_switches': (
-            "📈 컨텍스트 스위치:\n"
-            "  - 낮을수록 오버헤드 적음\n"
-            "  - 스케줄러 효율성 지표"
-        )
-    }
+    # 6. 실제 결과 기반 요약 (동적 생성)
+    # 각 스케줄러의 primary_metric 값 가져오기
+    metric_values = {name: m.get(primary_metric) for name, m in metrics.items()}
+    valid_values = {k: v for k, v in metric_values.items() if v is not None}
 
-    if primary_metric in metric_descriptions:
-        insights.append(metric_descriptions[primary_metric])
+    if valid_values and len(valid_values) >= 2:
+        lower_is_better = primary_metric in [
+            'avg_wait', 'avg_turnaround', 'context_switches',
+            'cv_wait', 'p99_wait', 'worst_ratio', 'starvation_pct'
+        ]
+
+        # 전체 스케줄러 중 최고/최저 찾기 (기아율 무시하고 순수 메트릭만)
+        if lower_is_better:
+            best = min(valid_values.items(), key=lambda x: x[1])
+            worst = max(valid_values.items(), key=lambda x: x[1])
+            direction = "낮을수록"
+        else:
+            best = max(valid_values.items(), key=lambda x: x[1])
+            worst = min(valid_values.items(), key=lambda x: x[1])
+            direction = "높을수록"
+
+        # 메트릭별 단위/포맷
+        metric_format = {
+            'avg_wait': ('ticks', '.1f'),
+            'avg_turnaround': ('ticks', '.1f'),
+            'cv_wait': ('%', '.1f'),
+            'p99_wait': ('ticks', '.1f'),
+            'worst_ratio': ('배', '.2f'),
+            'fairness': ('', '.4f'),
+            'starvation_pct': ('%', '.1f'),
+            'cpu_time_ratio': (':1', '.1f'),
+            'context_switches': ('회', 'd'),
+        }
+        unit, fmt = metric_format.get(primary_metric, ('', '.2f'))
+
+        best_val = f"{best[1]:{fmt}}{unit}"
+        worst_val = f"{worst[1]:{fmt}}{unit}"
+
+        # 기아율 표시
+        best_starv = metrics[best[0]].get('starvation_pct', 0)
+        worst_starv = metrics[worst[0]].get('starvation_pct', 0)
+
+        best_note = f" (기아율 {best_starv:.0f}%)" if best_starv > 0 else ""
+        worst_note = f" (기아율 {worst_starv:.0f}%)" if worst_starv > 0 else ""
+
+        # 기아율 때문에 승자가 달라지는 경우 설명 추가
+        excluded_by_starvation = [k for k, v in metrics.items()
+                                   if v.get('starvation_pct', 0) >= 10]
+
+        summary = f"📊 결과 요약 ({primary_metric}, {direction} 좋음):\n"
+        summary += f"  🥇 최고: {best[0].upper()} = {best_val}{best_note}\n"
+        summary += f"  🥉 최저: {worst[0].upper()} = {worst_val}{worst_note}"
+
+        if excluded_by_starvation and best[0] in excluded_by_starvation:
+            summary += f"\n  ⚠️ {best[0].upper()}는 기아율 {best_starv:.0f}%로 승자에서 제외됨"
+
+        insights.append(summary)
 
     return insights

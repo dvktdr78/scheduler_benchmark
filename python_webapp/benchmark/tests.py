@@ -21,6 +21,7 @@ class BenchmarkTest:
     schedulers: List[str]  # 비교할 스케줄러 리스트
     primary_metric: str  # 주요 측정 지표
     description: str  # 상세 설명
+    max_ticks: int = 10000  # 시뮬레이션 최대 시간 (기본값 10000)
 
 
 # ========== 테스트 정의 ==========
@@ -54,13 +55,14 @@ TEST_GENERAL_CPU = BenchmarkTest(
     schedulers=["basic", "mlfqs", "cfs"],
     primary_metric="avg_turnaround",
     description="""
-    CPU-bound 워크로드 (Nice -10~10):
+    CPU-bound 워크로드 (Nice 0):
       - CPU burst: 300-800 ticks
       - I/O 없음
 
     목표: 과학 계산, 컴파일 등 CPU 집약 작업
-    비교: 우선순위 처리 능력 비교 (Nice 다양)
-    """
+    비교: 순수 스케줄링 알고리즘 효율성 비교
+    """,
+    max_ticks=35000  # 총 burst ~27,500의 1.3배
 )
 
 TEST_GENERAL_IO = BenchmarkTest(
@@ -133,7 +135,8 @@ TEST_APP_BATCH = BenchmarkTest(
 
     목표: 대용량 데이터 처리, 빌드 시스템
     비교: 순차 배치 작업 처리 효율
-    """
+    """,
+    max_ticks=35000  # 총 burst ~30,000 + 순차 도착
 )
 
 TEST_APP_GAMING = BenchmarkTest(
@@ -204,12 +207,13 @@ TEST_FAIRNESS_EXTREME_NICE = BenchmarkTest(
     극단적 Nice 워크로드 (Nice -20 vs 19), I/O 없음:
       - 절반: Nice -20 (최고 우선순위)
       - 절반: Nice 19 (최저 우선순위)
-      - CPU burst: 2,000 ticks (공정성 측정용으로 단축)
+      - CPU burst: 1,000 ticks (공정성 측정용으로 단축)
 
     목표: 가중치 비율에 따른 CPU 배분 공정성 측정
     비교: MLFQS vs CFS (CFS는 weight 비례 분배가 목표)
     메트릭: Jain's Fairness Index (1.0에 가까울수록 공정)
-    """
+    """,
+    max_ticks=60000  # 총 burst 30,000의 2배
 )
 
 # 4. Nice 효과 테스트 (MLFQS vs CFS만)
@@ -225,14 +229,13 @@ TEST_NICE_EFFECT = BenchmarkTest(
     Extreme Nice 워크로드:
       - 절반: Nice -20 (최고 우선순위)
       - 절반: Nice 19 (최저 우선순위)
-      - CPU burst: 10,000 ticks (동일, 긴 시간으로 nice 효과 측정)
+      - CPU burst: 2,000 ticks (동일)
 
     목표: Nice 값의 실제 효과 측정
     비교: MLFQS vs CFS (각자의 nice 해석 방식)
-    예상: CFS는 ~4000:1 비율, MLFQS는 더 약한 차이
-
-    NOTE: Burst time이 길어야 vruntime/priority 차이가 CPU 시간 차이로 나타남
-    """
+    예상: CFS는 ~1000:1 비율
+    """,
+    max_ticks=20000  # 총 burst 100,000의 20%
 )
 
 # 5. 확장성 테스트 (스레드 수 변화)
@@ -353,7 +356,8 @@ TEST_STARVATION = BenchmarkTest(
     용도: Starvation 방지 능력 검증
 
     CFS 장점: 모든 스레드가 공정하게 실행 기회 획득
-    """
+    """,
+    max_ticks=20000  # 총 burst 100,000의 20%
 )
 
 

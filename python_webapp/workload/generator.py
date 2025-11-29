@@ -61,11 +61,11 @@ def generate_cpu_bound(count: int, seed: Optional[int] = None) -> List[Thread]:
     """
     CPU-bound 워크로드
 
-    특성: 긴 CPU burst, I/O 없음, Nice -10~10 다양
-    용도: 과학 계산, 컴파일 (우선순위 다양)
+    특성: 긴 CPU burst, I/O 없음, Nice 0 (순수 알고리즘 비교)
+    용도: 과학 계산, 컴파일
 
-    NOTE: Nice 값 다양하게 설정하여 우선순위 처리 능력 테스트
-          Basic은 고정 우선순위, MLFQS/CFS는 동적 조정
+    NOTE: Nice 0으로 통일하여 순수 스케줄링 알고리즘 효율성 비교
+          공정성 테스트에서도 동일 가중치로 측정
     """
     if seed is not None:
         random.seed(seed)
@@ -80,7 +80,7 @@ def generate_cpu_bound(count: int, seed: Optional[int] = None) -> List[Thread]:
             burst_time=burst,
             remaining_time=burst,
             io_frequency=0,
-            nice=random.randint(-10, 10),  # Nice 다양하게
+            nice=0,  # Nice 0 - 순수 알고리즘 비교
             status=ThreadStatus.READY
         )
         threads.append(thread)
@@ -328,8 +328,8 @@ def generate_extreme_nice(count: int, seed: Optional[int] = None) -> List[Thread
     특성: Nice -20 vs Nice 19 대비
     용도: Nice 효과 검증
 
-    NOTE: Burst time을 10,000으로 설정하여 nice 효과가 충분히 누적되도록 함
-          짧은 burst (300)에서는 vruntime 차이가 CPU 시간 차이로 나타나기 전에 완료됨
+    NOTE: Burst time 2,000 → 총 100,000 ticks (50개 기준)
+          MLFQS 성능 고려하여 축소, 여전히 nice 효과 측정 가능
     """
     if seed is not None:
         random.seed(seed)
@@ -343,8 +343,8 @@ def generate_extreme_nice(count: int, seed: Optional[int] = None) -> List[Thread
             tid=i+1,
             name=f"nice_minus20_{i+1}",
             arrival_time=random.randint(0, 50),
-            burst_time=10000,  # 300 → 10,000 (nice 효과 측정에 충분한 시간)
-            remaining_time=10000,
+            burst_time=2000,  # 10,000 → 2,000 (MLFQS 성능 고려)
+            remaining_time=2000,
             io_frequency=0,
             io_duration=0,
             nice=-20,
@@ -358,8 +358,8 @@ def generate_extreme_nice(count: int, seed: Optional[int] = None) -> List[Thread
             tid=half + i + 1,
             name=f"nice_19_{i+1}",
             arrival_time=random.randint(0, 50),
-            burst_time=10000,  # 300 → 10,000 (nice 효과 측정에 충분한 시간)
-            remaining_time=10000,
+            burst_time=2000,  # 10,000 → 2,000 (MLFQS 성능 고려)
+            remaining_time=2000,
             io_frequency=0,
             io_duration=0,
             nice=19,

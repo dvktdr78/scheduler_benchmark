@@ -21,6 +21,19 @@ from simulator.simulator import Simulator
 from analysis.insights import generate_comparison_report
 from benchmark.tests import TEST_CATEGORIES, get_test_by_id, ALL_TESTS
 
+# 메트릭 한글 이름 매핑
+METRIC_NAMES = {
+    'avg_wait': '평균 대기 시간',
+    'avg_turnaround': '평균 반환 시간',
+    'cv_wait': '대기 시간 변동계수',
+    'p99_wait': 'P99 대기 시간',
+    'worst_ratio': '최악/평균 비율',
+    'fairness': '공정성 지수',
+    'starvation_pct': '기아율',
+    'cpu_time_ratio': 'CPU 시간 비율',
+    'context_switches': '컨텍스트 스위치',
+}
+
 # 페이지 설정
 st.set_page_config(
     page_title="스케줄러 벤치마크",
@@ -277,14 +290,14 @@ st.sidebar.markdown(f"**주요 메트릭:** {selected_test.primary_metric}")
 with st.sidebar.expander("📖 상세 설명"):
     st.markdown(selected_test.description)
 
-# 시뮬레이션 시간
+# 시뮬레이션 시간 (테스트별 기본값 사용)
 max_ticks = st.sidebar.number_input(
     "시뮬레이션 시간 (ticks)",
     min_value=1000,
-    max_value=100000,
-    value=35000,
+    max_value=500000,
+    value=selected_test.max_ticks,  # 테스트별 최적 시간 사용
     step=5000,
-    help="50개 스레드 완료에 필요한 시간: 약 30,000 ticks"
+    help=f"이 테스트 권장: {selected_test.max_ticks:,} ticks"
 )
 
 # ========== 실행 버튼 ==========
@@ -337,32 +350,8 @@ if run_clicked:
         base_threads = generate_workload(selected_test.workload_type, selected_test.thread_count, seed=42)
         progress_bar.progress(5)
 
-    # Nice/공정성 극단 테스트는 일부만 완료하도록 시뮬레이션 시간 조정
+    # 시뮬레이션 시간 (테스트별 최적값이 이미 기본 설정됨)
     actual_max_ticks = max_ticks
-    if selected_test.test_id == "nice_effect":
-        total_work = sum(t.burst_time for t in base_threads)
-        suggested_ticks = int(total_work * 0.2)  # 20%만 실행해도 효과 관찰 가능
-        actual_max_ticks = min(max_ticks, suggested_ticks)  # 과도한 런타임 방지
-        st.info(
-            f"💡 Nice 효과 측정: 시뮬레이션을 최대 {actual_max_ticks:,} ticks까지 실행 "
-            f"(입력값 {max_ticks:,} / 총 작업의 20% 기준)"
-        )
-    elif selected_test.test_id == "fairness_extreme_nice":
-        total_work = sum(t.burst_time for t in base_threads)
-        suggested_ticks = int(total_work * 0.3)  # 모든 스레드 완료 전에 비율 측정
-        actual_max_ticks = min(max_ticks, suggested_ticks)
-        st.info(
-            f"💡 공정성 극단 Nice: 최대 {actual_max_ticks:,} ticks까지 실행 "
-            f"(입력값 {max_ticks:,} / 총 작업의 30% 기준)"
-        )
-    elif selected_test.test_id in ["fairness_cpu", "fairness_mixed"]:
-        total_work = sum(t.burst_time for t in base_threads)
-        suggested_ticks = int(total_work * 0.5)  # 50%만 실행해서 완료 전 측정
-        actual_max_ticks = min(max_ticks, suggested_ticks)
-        st.info(
-            f"💡 공정성 테스트: 최대 {actual_max_ticks:,} ticks까지 실행 "
-            f"(입력값 {max_ticks:,} / 총 작업의 50% 기준)"
-        )
 
     # 스케줄러 실행
     scheduler_results = {}
@@ -440,61 +429,87 @@ if 'report' in st.session_state:
 
     # 메트릭 비교 (동적 컬럼 수)
     scheduler_names = test.schedulers
-    cols = st.columns(len(scheduler_names))
+    pm = test.primary_metric
 
-    # 스케줄러별 색상 매핑
-    scheduler_colors = {
-        'basic': '🔵',
-        'mlfqs': '🟢',
-        'cfs': '🟠'
+    # 메트릭 정의
+    metric_labels = {
+        'avg_wait': ('평균 대기 시간', 'ticks', False),  # (라벨, 단위, 높을수록좋음)
+        'avg_turnaround': ('평균 반환 시간', 'ticks', False),
+        'cv_wait': ('변동계수 (CV)', '%', False),
+        'p99_wait': ('P99 대기 시간', 'ticks', False),
+        'worst_ratio': ('최악/평균 비율', 'x', False),
+        'fairness': ('공정성 지수', '', True),
+        'starvation_pct': ('기아율', '%', False),
+        'cpu_time_ratio': ('CPU 시간 비율', 'x', True),
+        'context_switches': ('컨텍스트 스위치', '', False),
     }
+
+    # 핵심 지표 값 수집 및 승자/패자 결정
+    primary_values = {name: report['metrics'][name].get(pm, 0) for name in scheduler_names}
+    higher_is_better = metric_labels.get(pm, ('', '', False))[2]
+
+    if higher_is_better:
+        best_val = max(primary_values.values())
+        worst_val = min(primary_values.values())
+    else:
+        best_val = min(primary_values.values()) if any(v > 0 for v in primary_values.values()) else 0
+        worst_val = max(primary_values.values())
+
+    # ========== 핵심 지표 강조 표시 ==========
+    pm_label, pm_unit, _ = metric_labels.get(pm, (pm, '', False))
+    st.subheader(f"⭐ 핵심 지표: {pm_label}")
+
+    primary_cols = st.columns(len(scheduler_names))
+    for col, scheduler_name in zip(primary_cols, scheduler_names):
+        with col:
+            val = primary_values[scheduler_name]
+            formatted_val = fmt_metric(val, ':.2f' if pm == 'cpu_time_ratio' else None)
+
+            # 색상 결정: 승자=녹색, 패자=빨강, 중간=기본
+            if val == best_val and val != worst_val:
+                st.success(f"🏆 **{scheduler_name.upper()}**")
+                st.metric(pm_label, f"{formatted_val} {pm_unit}")
+            elif val == worst_val and val != best_val:
+                st.error(f"❌ **{scheduler_name.upper()}**")
+                st.metric(pm_label, f"{formatted_val} {pm_unit}")
+            else:
+                st.info(f"**{scheduler_name.upper()}**")
+                st.metric(pm_label, f"{formatted_val} {pm_unit}")
+
+            # 기아율 경고 (핵심 지표 바로 아래)
+            starvation = report['metrics'][scheduler_name].get('starvation_pct', 0)
+            if starvation >= 10:
+                st.warning(f"⚠️ 기아율 {starvation:.1f}%")
+
+    st.divider()
+
+    # ========== 세부 메트릭 ==========
+    cols = st.columns(len(scheduler_names))
 
     for col, scheduler_name in zip(cols, scheduler_names):
         with col:
-            color = scheduler_colors.get(scheduler_name, '⚪')
-            st.subheader(f"{color} {scheduler_name.upper()}")
-
+            st.subheader(f"{scheduler_name.upper()}")
             metrics = report['metrics'][scheduler_name]
 
-            # 메트릭 정의
-            metric_labels = {
-                'avg_wait': ('평균 대기', 'ticks'),
-                'avg_turnaround': ('평균 반환', 'ticks'),
-                'cv_wait': ('일관성(CV)', '%'),
-                'p99_wait': ('P99 대기', 'ticks'),
-                'worst_ratio': ('최악/평균', 'x'),
-                'fairness': ('공정성', ''),
-                'starvation_pct': ('기아율', '%'),
-                'cpu_time_ratio': ('CPU비율', 'x'),
-                'context_switches': ('컨텍스트SW', ''),
-            }
+            # 처리량 메트릭
+            st.caption("📊 처리량")
+            st.metric("평균 대기", f"{fmt_metric(metrics.get('avg_wait'))} ticks")
+            st.metric("평균 반환", f"{fmt_metric(metrics.get('avg_turnaround'))} ticks")
 
-            # 주요 메트릭 강조 표시
-            pm = test.primary_metric
-            is_primary = lambda k: '⭐ ' if k == pm else ''
+            # 일관성 메트릭
+            st.caption("📈 일관성")
+            st.metric("변동계수", f"{fmt_metric(metrics.get('cv_wait'), ':.1f')}%")
+            st.metric("P99 대기", f"{fmt_metric(metrics.get('p99_wait'))} ticks")
 
-            # 처리량 메트릭 (MLFQS/Basic 유리)
-            st.caption("📊 처리량 메트릭")
-            st.metric(f"{is_primary('avg_wait')}평균 대기", f"{fmt_metric(metrics.get('avg_wait'))} ticks")
-            st.metric(f"{is_primary('avg_turnaround')}평균 반환", f"{fmt_metric(metrics.get('avg_turnaround'))} ticks")
-
-            # 일관성 메트릭 (CFS 유리)
-            st.caption("📈 일관성 메트릭")
-            st.metric(f"{is_primary('cv_wait')}변동계수", f"{fmt_metric(metrics.get('cv_wait'), ':.1f')}%")
-            st.metric(f"{is_primary('p99_wait')}P99 대기", f"{fmt_metric(metrics.get('p99_wait'))} ticks")
-            st.metric(f"{is_primary('worst_ratio')}최악/평균", f"{fmt_metric(metrics.get('worst_ratio'), ':.2f')}x")
-
-            # 공정성 메트릭 (CFS 유리)
-            st.caption("⚖️ 공정성 메트릭")
-            st.metric(f"{is_primary('fairness')}공정성", f"{fmt_metric(metrics.get('fairness'), ':.4f')}")
-            st.metric(f"{is_primary('starvation_pct')}기아율", f"{fmt_metric(metrics.get('starvation_pct'), ':.1f')}%")
-
-            if metrics.get('has_starvation'):
-                st.warning("⚠️ Starvation 위험")
+            # 공정성 메트릭
+            st.caption("⚖️ 공정성")
+            st.metric("공정성", f"{fmt_metric(metrics.get('fairness'), ':.4f')}")
+            st.metric("기아율", f"{fmt_metric(metrics.get('starvation_pct'), ':.1f')}%")
 
     # 개선율 표시 (baseline이 있는 경우)
     if len(report['improvements']) > 0:
-        st.subheader(f"📈 {report['baseline'].upper()} 대비 개선율")
+        metric_korean = METRIC_NAMES.get(report['primary_metric'], report['primary_metric'])
+        st.subheader(f"📈 {report['baseline'].upper()} 대비 개선율 ({metric_korean})")
 
         improvement_cols = st.columns(len(report['improvements']))
         for col, (key, value) in zip(improvement_cols, report['improvements'].items()):
@@ -541,7 +556,7 @@ if 'report' in st.session_state:
 
     # 개선율 그래프 (baseline이 있는 경우)
     if len(report['improvements']) > 0:
-        st.subheader(f"📈 {report['baseline'].upper()} 대비 개선율")
+        st.subheader(f"📈 {report['baseline'].upper()} 대비 개선율 ({metric_korean})")
 
         improvement_data = []
         for key, value in report['improvements'].items():
